@@ -1,0 +1,40 @@
+{
+  "surahs": 114,
+  "verses": 6236,
+  "exact_source_text_comparisons": 12472,
+  "bismillah_attributes_preserved": true,
+  "json_sqlite_roundtrip": "passed",
+  "sqlite_integrity": "ok",
+  "search_checks": [
+    {
+      "query": "ان مع العسر يسرا",
+      "verse_keys": [
+        "94:6"
+      ]
+    },
+    {
+      "query": "إِنَّ مَعَ الْعُسْرِ يُسْرًا",
+      "verse_keys": [
+        "94:6"
+      ]
+    },
+    {
+      "query": "الحمد لله رب العالمين",
+      "verse_keys": [
+        "10:10",
+        "1:2",
+        "39:75",
+        "40:65"
+      ]
+    },
+    {
+      "query": "عبارة اختبار غير موجودة ززز",
+      "verse_keys": []
+    }
+  ],
+  "input_sha256": {
+    "quran-simple-clean.xml": "6fdf7bfd14474d7acff92ecc71e7b86bb4c81685a67d1646a2e9afba95b9f4e2",
+    "quran-uthmani.xml": "e0f461a8f794629b80e99f7bc9314e8b61c734b4ef0e53b8231ffc291c8ea108"
+  },
+  "scope": "Structural and lossless-import verification against supplied files; not independent certification against an external edition."
+}

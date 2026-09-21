@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>البحث في القرآن والحديث</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <main class="page-shell">
+    <header class="hero">
+      <p class="eyebrow">بحث محلي بمصادر محددة</p>
+      <h1>البحث في القرآن والحديث</h1>
+      <p class="supporting-text">ابحث عن آية، أو اطّلع على أحكام المحدثين من مصادرها.</p>
+    </header>
+    <section class="choice-grid" aria-label="اختر نوع البحث">
+      <a class="choice-card" href="/quran">
+        <span class="choice-kicker">المصحف</span>
+        <h2>القرآن الكريم</h2>
+        <p>ابحث عن آية أو جزء منها، مع التشكيل أو بدونه.</p>
+        <span class="choice-link">ابدأ البحث</span>
+      </a>
+      <a class="choice-card" href="/hadith">
+        <span class="choice-kicker">الموسوعة الحديثية</span>
+        <h2>الحديث الشريف</h2>
+        <p>ابحث عن حديث واطّلع على حكم المحدث ومصدره عبر الدرر السنية.</p>
+        <span class="choice-link">ابدأ البحث</span>
+      </a>
+    </section>
+
+    <section class="media-upload-section" aria-labelledby="media-upload-heading">
+      <div class="section-header">
+        <h2 id="media-upload-heading">البحث بصورة أو فيديو</h2>
+        <p class="supporting-text">ارفع صورة تحتوي على نص، أو فيديو قصير يُتلى أو يُذكر فيه حديث.</p>
+      </div>
+
+      <form id="media-upload-form" class="media-upload-form" novalidate>
+        <div class="file-dropzone" id="file-dropzone">
+          <input
+            type="file"
+            id="media-file-input"
+            name="file"
+            accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,video/quicktime,.jpg,.jpeg,.png,.webp,.mp4,.webm,.mov"
+            class="visually-hidden"
+          >
+          <label for="media-file-input" class="file-label-button" id="file-select-label">اختر صورة أو فيديو</label>
+          <p class="selected-file-info" id="selected-file-info" aria-live="polite"></p>
+        </div>
+
+        <button type="submit" id="media-submit-button" class="primary-button" disabled>
+          استخراج النص والتحقق منه
+        </button>
+      </form>
+
+      <div id="media-status" class="status" role="status" aria-live="polite"></div>
+
+      <section id="media-results" class="media-results" aria-live="polite"></section>
+    </section>
+
+    <footer><span>مصادر البحث: القرآن من corpus محلي، والحديث من </span><a href="https://dorar.net" rel="noopener noreferrer">الدرر السنية</a></footer>
+  </main>
+  <script src="/static/app.js" defer></script>
+</body>
+</html>

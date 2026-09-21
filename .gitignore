@@ -1,0 +1,29 @@
+# Python
+.venv/
+.review-venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Logs and temporary files
+*.log
+*.tmp
+.DS_Store
+Thumbs.db
+
+# Node / Expo
+node_modules/
+.expo/
+dist/
+web-build/
+coverage/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*

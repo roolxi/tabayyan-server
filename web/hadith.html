@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>البحث في الحديث الشريف</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <main class="page-shell">
+    <nav class="top-nav"><a href="/">القرآن والحديث</a><a href="/quran">بحث القرآن</a></nav>
+    <header class="hero">
+      <p class="eyebrow">الموسوعة الحديثية · الدرر السنية</p>
+      <h1>البحث في الحديث الشريف</h1>
+      <p class="supporting-text">اطّلع على أحكام المحدثين كما وردت في الدرر السنية.</p>
+    </header>
+    <section class="search-panel" aria-labelledby="hadith-search-label">
+      <form id="hadith-search-form">
+        <label id="hadith-search-label" for="hadith-search-input">نص الحديث أو جزء منه</label>
+        <div class="search-row">
+          <input id="hadith-search-input" name="text" type="search" maxlength="1000" placeholder="مثال: إنما الأعمال بالنيات" autocomplete="off" required>
+          <button id="hadith-search-button" type="submit">بحث</button>
+          <button id="hadith-suggest-button" type="button" class="secondary-button suggest-button">البحث بالمعنى</button>
+        </div>
+        <fieldset class="mode-picker">
+          <legend>وضع البحث</legend>
+          <label><input type="radio" name="mode" value="simple" checked> غير المتخصص</label>
+          <label><input type="radio" name="mode" value="specialist"> للمتخصص في علم الحديث</label>
+        </fieldset>
+      </form>
+      <p class="search-note">نعرض أحكام المحدثين من المصدر كما وردت، ولا نصدر حكمًا مستقلًا على الحديث.</p>
+    </section>
+    <section class="results-section" aria-live="polite" aria-atomic="true">
+      <p id="hadith-status" class="status initial-state">أدخل عبارة للبحث في المصدر.</p>
+      <div id="hadith-results" class="results-list"></div>
+    </section>
+    <footer><a href="/">العودة إلى الصفحة الرئيسية</a><span> · </span><a href="/quran">البحث في القرآن</a></footer>
+  </main>
+  <script src="/static/hadith.js" defer></script>
+</body>
+</html>

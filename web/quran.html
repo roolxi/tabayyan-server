@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>البحث في القرآن الكريم</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <main class="page-shell">
+    <nav class="top-nav"><a href="/">القرآن والحديث</a><a href="/hadith">بحث الحديث</a></nav>
+    <header class="hero">
+      <p class="eyebrow">نص موثّق من مشروع تنزيل</p>
+      <h1>البحث في القرآن الكريم</h1>
+      <p class="supporting-text">ابحث بكلمات من الآية، مع التشكيل أو بدونه.</p>
+    </header>
+    <section class="search-panel" aria-labelledby="search-label">
+      <form id="quran-search-form">
+        <label id="search-label" for="quran-search-input">عبارة البحث</label>
+        <div class="search-row">
+          <input id="quran-search-input" name="text" type="search" maxlength="500" placeholder="مثال: ان مع العسر يسرا" autocomplete="off" required>
+          <button id="quran-search-button" type="submit">بحث</button>
+          <button id="quran-suggest-button" type="button" class="secondary-button suggest-button">البحث بالمعنى</button>
+        </div>
+      </form>
+      <p class="search-note">البحث الحالي يطابق كلمات النص مع تجاهل التشكيل وبعض اختلافات الكتابة. يمكنك استخدام «البحث بالمعنى» لاقتراح عبارات للبحث.</p>
+    </section>
+    <section class="results-section" aria-live="polite" aria-atomic="true">
+      <p id="quran-status" class="status initial-state">أدخل عبارة للبحث في نص القرآن الكريم.</p>
+      <div id="quran-results" class="results-list"></div>
+    </section>
+    <footer><a href="/">العودة إلى الصفحة الرئيسية</a><span> · </span><a href="https://tanzil.net" rel="noopener noreferrer">النص القرآني: مشروع تنزيل — Tanzil</a></footer>
+  </main>
+  <script src="/static/quran.js" defer></script>
+</body>
+</html>

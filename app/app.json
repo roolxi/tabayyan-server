@@ -1,0 +1,34 @@
+{
+  "expo": {
+    "name": "تبيّن",
+    "slug": "tabayyan",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "scheme": "tabayyan",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.tabayyan.app",
+      "infoPlist": {
+        "NSCameraUsageDescription": "نحتاج إلى إذن الكاميرا لالتقاط صورة للآية أو الحديث والتحقق من نصها.",
+        "NSPhotoLibraryUsageDescription": "نحتاج إلى إذن مكتبة الصور لاختيار صورة أو فيديو للآية أو الحديث.",
+        "NSMotionUsageDescription": "نحتاج إلى استخدام حساسات الحركة لتقديم تأثيرات تفاعلية هادئة للعدسة."
+      }
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "نحتاج إلى إذن مكتبة الصور لاختيار صورة أو فيديو للآية أو الحديث.",
+          "cameraPermission": "نحتاج إلى إذن الكاميرا لالتقاط صورة للآية أو الحديث والتحقق من نصها."
+        }
+      ],
+      "expo-font"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
