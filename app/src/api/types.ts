@@ -146,6 +146,42 @@ export interface MediaExtractResponse {
   mediaType?: "image" | "video";
   results: MediaResultItem[];
   message?: string;
+  sourcePlatform?: string;
+  sourceTitle?: string;
+  sourceUrl?: string;
+  partialProcessing?: boolean;
+}
+
+// URL Media Extraction Job Types
+export type UrlJobStatus = "queued" | "processing" | "completed" | "failed";
+
+export type UrlJobStage =
+  | "validating_url"
+  | "reading_metadata"
+  | "downloading_audio"
+  | "normalizing_audio"
+  | "analyzing_audio"
+  | "matching_sources"
+  | "visual_fallback"
+  | "completed"
+  | "failed";
+
+export interface UrlJobSubmitResponse {
+  jobId: string;
+  status: "queued";
+}
+
+export interface UrlJobStatusResponse {
+  jobId: string;
+  status: UrlJobStatus;
+  stage: UrlJobStage;
+  progress: number;
+  message: string;
+  result?: MediaExtractResponse;
+  error?: {
+    code?: string;
+    message: string;
+  };
 }
 
 export interface ApiError {

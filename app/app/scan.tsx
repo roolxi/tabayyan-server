@@ -2,11 +2,13 @@ import React, { useEffect, useState } from "react";
 import {
   Alert,
   Dimensions,
+  Keyboard,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -20,6 +22,7 @@ import { GlassButton } from "../src/components/glass/GlassButton";
 import { ScanProgress } from "../src/components/motion/ScanProgress";
 import { useScanContext } from "../src/context/ScanContext";
 import { normalizeMediaAsset, uploadMedia } from "../src/api/media";
+import { isSupportedMediaUrl, pollUrlJob, submitUrlJob } from "../src/api/urlMedia";
 import { MediaExtractResponse } from "../src/api/types";
 import { colors } from "../src/theme/colors";
 import { radii, spacing } from "../src/theme/spacing";
@@ -59,6 +62,9 @@ export default function ScanScreen() {
   const [errorMessage, setErrorMessage] = useState<string>("");
   const [notFound, setNotFound] = useState<boolean>(false);
   const [pendingResult, setPendingResult] = useState<MediaExtractResponse | null>(null);
+  const [pastedUrl, setPastedUrl] = useState<string>("");
+  const [isSubmittingUrl, setIsSubmittingUrl] = useState<boolean>(false);
+  const [urlStageMessage, setUrlStageMessage] = useState<string>("");
 
   // Trigger scan when file params change or are provided initially
   useEffect(() => {
@@ -292,6 +298,70 @@ export default function ScanScreen() {
     }
   };
 
+  const handleScanUrl = async () => {
+    const trimmed = pastedUrl.trim();
+    if (!trimmed) {
+      Alert.alert("رابط غير صحيح", "الرجاء إدخال أو لصق رابط المقطع أولاً.");
+      return;
+    }
+
+    if (!isSupportedMediaUrl(trimmed)) {
+      Alert.alert(
+        "رابط غير مدعوم",
+        "يرجى استخدام رابط من يوتيوب (بما فيها Shorts) أو تيك توك أو إنستغرام (Reels)."
+      );
+      return;
+    }
+
+    Keyboard.dismiss();
+    setIsSubmittingUrl(true);
+    setIsScanning(true);
+    setIsComplete(false);
+    setIsError(false);
+    setNotFound(false);
+    setErrorMessage("");
+    setPendingResult(null);
+    setActiveUri("remote_url");
+    setActiveName("مقطع فيديو من رابط");
+    setActiveType("video/mp4");
+    setMediaKind("video");
+    setUrlStageMessage("جارٍ قراءة الرابط...");
+
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+    try {
+      const submitRes = await submitUrlJob(trimmed);
+      const jobResult = await pollUrlJob(submitRes.jobId, {
+        onProgress: (status) => {
+          if (status.message) {
+            setUrlStageMessage(status.message);
+          }
+        },
+      });
+
+      if (
+        jobResult.result &&
+        jobResult.result.status === "candidates" &&
+        jobResult.result.results.length > 0
+      ) {
+        setPendingResult(jobResult.result);
+        setIsComplete(true);
+      } else {
+        setIsScanning(false);
+        setNotFound(true);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      }
+    } catch (err: unknown) {
+      setIsScanning(false);
+      setIsError(true);
+      const apiErr = err as { code?: string; message?: string };
+      setErrorMessage(apiErr.message || "تعذر إكمال فحص الرابط.");
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    } finally {
+      setIsSubmittingUrl(false);
+    }
+  };
+
   const handleReset = () => {
     Haptics.selectionAsync();
     setActiveUri(null);
@@ -300,6 +370,8 @@ export default function ScanScreen() {
     setIsError(false);
     setNotFound(false);
     setPendingResult(null);
+    setPastedUrl("");
+    setUrlStageMessage("");
   };
 
   const handleGoToSearch = () => {
@@ -352,6 +424,10 @@ export default function ScanScreen() {
                 {mediaKind === "image" ? "صورة:" : "فيديو:"} {activeName}
               </Text>
             </View>
+
+            {urlStageMessage ? (
+              <Text style={styles.urlStageNotice}>{urlStageMessage}</Text>
+            ) : null}
 
             <Text style={styles.scanNotice}>
               يتم استخراج النص للبحث فقط؛ النص المعتمد يطابق دائمًا المصحف أو موسوعة الدرر السنية.
@@ -535,6 +611,66 @@ export default function ScanScreen() {
                 </View>
               </AdaptiveGlass>
             </Pressable>
+
+            {/* Picker Option 4: Public Video URL (YouTube, TikTok, Instagram) */}
+            <View style={styles.pickerOption}>
+              <AdaptiveGlass
+                borderRadius={radii.xl}
+                style={[styles.urlPickerCard, shadows.glassCard]}
+                highlightBorder
+              >
+                <View style={styles.pickerRow}>
+                  <View style={styles.pickerIconWrapper}>
+                    {Platform.OS === "ios" ? (
+                      <SymbolView name="link" size={26} tintColor={colors.warmGold} />
+                    ) : (
+                      <Text style={styles.pickerEmoji}>🔗</Text>
+                    )}
+                  </View>
+                  <View style={styles.pickerInfo}>
+                    <Text style={styles.pickerOptionTitle}>فحص رابط مقطع عام</Text>
+                    <Text style={styles.pickerOptionSubtitle}>
+                      يوتيوب (بما فيها Shorts)، تيك توك، وإنستغرام (Reels)
+                    </Text>
+                  </View>
+                </View>
+
+                {/* URL Input Box */}
+                <View style={styles.urlInputRow}>
+                  <TextInput
+                    style={styles.urlTextInput}
+                    placeholder="ألصق رابط يوتيوب، تيك توك، أو إنستغرام..."
+                    placeholderTextColor={colors.muted}
+                    value={pastedUrl}
+                    onChangeText={setPastedUrl}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    keyboardType="url"
+                    returnKeyType="go"
+                    onSubmitEditing={handleScanUrl}
+                    editable={!isSubmittingUrl}
+                  />
+                  {pastedUrl.length > 0 && (
+                    <Pressable
+                      onPress={() => setPastedUrl("")}
+                      style={styles.clearUrlBtn}
+                      hitSlop={8}
+                    >
+                      <Text style={styles.clearUrlText}>✕</Text>
+                    </Pressable>
+                  )}
+                </View>
+
+                {/* Submit Action Button */}
+                <GlassButton
+                  label={isSubmittingUrl ? "جارٍ بدء الفحص..." : "فحص الرابط"}
+                  variant="primary"
+                  onPress={handleScanUrl}
+                  disabled={!pastedUrl.trim() || isSubmittingUrl}
+                  style={styles.submitUrlBtn}
+                />
+              </AdaptiveGlass>
+            </View>
 
             {/* Guardrail and Source Notice */}
             <View style={styles.guardrailCard}>
@@ -732,6 +868,48 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   actionBtn: {
+    width: "100%",
+  },
+  urlStageNotice: {
+    fontSize: 14,
+    color: colors.warmGold,
+    fontWeight: "600",
+    textAlign: "center",
+    marginTop: spacing.md,
+  },
+  urlPickerCard: {
+    padding: spacing.lg,
+    backgroundColor: "rgba(10, 36, 28, 0.45)",
+  },
+  urlInputRow: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.06)",
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: "rgba(212, 175, 55, 0.25)",
+    paddingHorizontal: spacing.md,
+    marginTop: spacing.md,
+    marginBottom: spacing.md,
+    height: 48,
+  },
+  urlTextInput: {
+    flex: 1,
+    color: colors.ivory,
+    fontSize: 14,
+    textAlign: "right",
+    paddingVertical: 0,
+  },
+  clearUrlBtn: {
+    padding: spacing.xs,
+    marginLeft: spacing.xs,
+  },
+  clearUrlText: {
+    color: colors.muted,
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  submitUrlBtn: {
     width: "100%",
   },
 });
