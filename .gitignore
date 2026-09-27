@@ -18,8 +18,11 @@ htmlcov/
 *.part
 extractor-test/
 .venv-extractor/
-.DS_Store
+*.DS_Store
 Thumbs.db
+*.zip
+*.ipa
+Payload/
 
 # Node / Expo
 node_modules/
