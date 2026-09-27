@@ -2,8 +2,8 @@
 
 خادم تبيّن للتحقق من صحة الآيات القرآنية والأحاديث النبوية. يوفر واجهة برمجية للبحث في نصوص القرآن عبر قاعدة بيانات محلية، والبحث في الأحاديث من الدرر السنية، والتعرف على النصوص من الصور ومقاطع الفيديو عبر الذكاء الاصطناعي.
 
-مستودع تطبيق الجوال (iOS):
-https://github.com/roolxi/Tabayyan-app
+- مستودع تطبيق الجوال (iOS): https://github.com/roolxi/Tabayyan-app
+- الخادم الحي (Live API): https://tabayyan.duckdns.org
 
 ---
 
@@ -33,7 +33,7 @@ cp .env.example .env
 python server.py
 ```
 
-يعمل الخادم افتراضياً على: `http://127.0.0.1:8000`
+يعمل الخادم محلياً على: `http://127.0.0.1:8000`
 
 ---
 
@@ -46,18 +46,6 @@ sudo systemctl status tabayyan   # فحص الحالة
 sudo systemctl restart tabayyan  # إعادة التشغيل
 sudo journalctl -u tabayyan -f   # متابعة السجلات
 ```
-
----
-
-## ربط دومين عبر Cloudflare Tunnel
-
-للحصول على رابط HTTPS مشفر:
-
-1. في لوحة Cloudflare Zero Trust، توجه إلى Networks ثم Tunnels.
-2. في تبويب Public Hostnames، أضف اسماً مستعاراً لدومينك (مثل api.yourdomain.com):
-   - Service: HTTP
-   - URL: 127.0.0.1:8000
-3. احفظ الإعداد ليصبح الخادم متاحاً عبر الرابط المشفر.
 
 ---
 

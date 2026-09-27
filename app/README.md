@@ -21,10 +21,10 @@ npx expo start
 
 ## الاتصال بالخادم
 
-يتم تحديد عنوان الخادم في ملف `.env`:
+عنوان الخادم الافتراضي في ملف `.env`:
 
 ```env
-EXPO_PUBLIC_API_BASE_URL=http://YOUR_SERVER_IP:8000
+EXPO_PUBLIC_API_BASE_URL=https://tabayyan.duckdns.org
 ```
 
 ---
