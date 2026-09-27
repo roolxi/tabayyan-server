@@ -93,3 +93,26 @@ footer { color: var(--muted); font-size: .9rem; }
   .choice-grid { grid-template-columns: 1fr; }
   .mode-picker { display: grid; gap: 8px; }
 }
+
+.project-disclaimer-banner {
+  background: #fdf5e6;
+  border: 1px solid #ebd4a8;
+  border-right: 5px solid #bd7b1a;
+  border-radius: 6px;
+  padding: 16px 20px;
+  margin-bottom: 28px;
+  color: #5c3c0a;
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+.project-disclaimer-banner strong {
+  display: block;
+  font-size: 1.05rem;
+  color: #3f2803;
+  margin-bottom: 4px;
+}
+.project-disclaimer-banner a {
+  color: #8c5506;
+  font-weight: 700;
+  text-decoration: underline;
+}

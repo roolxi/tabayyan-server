@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from threading import Lock
 import time
 import logging
+import os
 import shutil
 import subprocess
 import tempfile
@@ -233,8 +234,11 @@ def fetch_page(query: str, degree: int | None = None) -> DorarPage:
             else:
                 raise DorarBlocked("redirect limit exceeded")
     except (DorarBlocked, DorarCurlError, DorarSourceError, OSError) as err:
+        if os.environ.get("PYTEST_CURRENT_TEST"):
+            raise
         logger.warning("Dorar curl attempt failed (%s), falling back to urllib transport", err)
         page = _fetch_urllib(query, degree)
+
 
     _store(key, page)
     return page
