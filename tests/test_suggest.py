@@ -386,3 +386,43 @@ def test_frontend_suggest_interaction_suite():
         print(res.stderr)
     assert res.returncode == 0
     assert "ALL FRONTEND SUGGEST INTERACTION TESTS PASSED!" in res.stdout
+
+
+def test_quran_suggest_filters_hallucinated_verses(client, monkeypatch):
+    """AI-hallucinated verses not in Tanzil Quran corpus are strictly filtered out."""
+    monkeypatch.setattr(openrouter_client, "get_api_key", lambda: "test-sk-key")
+    fake_ayah = "وبشر الصابرين بأنهم مخلدون في النعيم المقيم أبدا"
+    monkeypatch.setattr(
+        openrouter_client,
+        "send_chat_completion",
+        lambda p, h: _mock_openrouter_dict([fake_ayah]),
+    )
+
+    response = client.post("/api/search/suggest", json={
+        "text": "آية عن الصبر والنعيم",
+        "type": "quran",
+    })
+    assert response.status_code == 200
+    data = response.json()
+    assert fake_ayah not in data["candidates"]
+
+
+def test_quran_suggest_returns_grounded_tanzil_verse(client, monkeypatch):
+    """Genuine Quran phrases are verified and returned from Tanzil corpus."""
+    monkeypatch.setattr(openrouter_client, "get_api_key", lambda: "test-sk-key")
+    real_phrase = "إن مع العسر يسرا"
+    monkeypatch.setattr(
+        openrouter_client,
+        "send_chat_completion",
+        lambda p, h: _mock_openrouter_dict([real_phrase]),
+    )
+
+    response = client.post("/api/search/suggest", json={
+        "text": "الآية اللي تقول بعد العسر يسر",
+        "type": "quran",
+    })
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["candidates"]) > 0
+    assert any("العسر" in c for c in data["candidates"])
+
