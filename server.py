@@ -3,12 +3,13 @@ import logging
 import os
 import sqlite3
 import re
+import tempfile
 import unicodedata
 from copy import deepcopy
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 
-from fastapi import FastAPI, File, Request, UploadFile
+from fastapi import BackgroundTasks, FastAPI, File, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -48,6 +49,18 @@ from services.openrouter_client import (
     generate_hadith_search_queries,
     select_hadith_candidate_ids,
     extract_media_candidates,
+)
+from services.remote_media_processor import (
+    RemoteMediaError,
+    job_registry,
+    validate_remote_url,
+    inspect_remote_media_metadata,
+    download_raw_media,
+    normalize_audio_to_wav,
+    split_audio_into_chunks,
+    extract_candidates_from_chunks,
+    deduplicate_extracted_candidates,
+    try_visual_fallback_for_short_video,
 )
 
 ROOT = Path(__file__).resolve().parent
@@ -423,7 +436,91 @@ async def extract_media_endpoint(request: Request, file: UploadFile = File(...))
             }
         )
 
-    # 3. Deduplicate extracted candidates after Arabic normalization
+    # 3. Ground candidates against authoritative sources
+    verified_results, dorar_error_occurred, unique_candidates = ground_candidates_to_results(candidates)
+
+    if verified_results:
+        return JSONResponse(
+            content={
+                "status": "candidates",
+                "mediaType": processed.kind,
+                "results": verified_results,
+            }
+        )
+    elif dorar_error_occurred and not any(c.get("type") == "quran" for c in unique_candidates):
+        return JSONResponse(
+            content={
+                "status": "temporarily_unavailable",
+                "mediaType": processed.kind,
+                "results": [],
+                "message": "تعذّر الاتصال بمصدر الحديث حاليًا للتحقق من النص. حاول مرة أخرى لاحقًا.",
+            }
+        )
+    else:
+        return JSONResponse(
+            content={
+                "status": "not_found",
+                "mediaType": processed.kind,
+                "results": [],
+                "message": "لم نتمكن من العثور على آية أو حديث موثّق يطابق المحتوى.",
+            }
+        )
+
+
+def extract_hadith_fallback_queries(h_text: str) -> list[str]:
+    """Generate clean fallback query phrases for Dorar search when full text yields 0 results."""
+    cleaned = h_text.strip()
+    sub_queries: list[str] = []
+
+    # 1. Check for reporting verbs: يقول, قال, قالت, سمعت, عنه
+    m_verb = re.search(r"(?:يقول|قال|قالت|سمعت|عنه)\s*[:،,-]?\s*(.+)", cleaned)
+    if m_verb:
+        after_verb = m_verb.group(1).strip()
+        if after_verb and after_verb not in sub_queries:
+            sub_queries.append(after_verb)
+
+    # 2. Extract contiguous dhikr phrases if present
+    m_dhikr = re.search(
+        r"((?:لا إله إلا الله|سبحان الله|الحمد لله|الله أكبر|ولا حول ولا قوة إلا بالله|لا حول ولا قوة إلا بالله|والله أكبر)(?:\s*(?:و\s*)?(?:لا إله إلا الله|سبحان الله|الحمد لله|الله أكبر|ولا حول ولا قوة إلا بالله|لا حول ولا قوة إلا بالله|والله أكبر))*)",
+        cleaned,
+    )
+    if m_dhikr and len(m_dhikr.group(0).split()) >= 3:
+        dhikr_str = m_dhikr.group(0).strip()
+        if dhikr_str not in sub_queries:
+            sub_queries.append(dhikr_str)
+
+    # 3. Strip common sermon oratorical prefixes
+    no_prefix = re.sub(
+        r"^(?:يا\s+)?(?:أيها|ايها|يا)\s+(?:الناس|المؤمنين|المؤمنون|عباد\s+الله|إخواني|قوم)\s*(?:و(?:الله|بالله)\s*)?[،,!\s]*",
+        "",
+        cleaned,
+    ).strip()
+    if no_prefix and no_prefix != cleaned and no_prefix not in sub_queries:
+        sub_queries.append(no_prefix)
+
+    # 4. Split on punctuation
+    for base in [cleaned, no_prefix]:
+        if not base:
+            continue
+        clauses = [c.strip() for c in re.split(r"[،,.\n;:؟!]", base) if len(c.strip().split()) >= 3]
+        for c in clauses:
+            if c and c not in sub_queries:
+                sub_queries.append(c)
+
+    # 5. Ending distinctive clause if long
+    words = cleaned.split()
+    if len(words) > 8:
+        end_win = " ".join(words[-7:])
+        if end_win not in sub_queries:
+            sub_queries.append(end_win)
+
+    return [q for q in sub_queries if q != cleaned]
+
+
+def ground_candidates_to_results(candidates: list[dict]) -> tuple[list[dict], bool, list[dict]]:
+    """Ground deduplicated candidates against authoritative Quran and Dorar Hadith sources.
+    Returns: (verified_results, dorar_error_occurred, unique_candidates)
+    """
     seen_normalized = set()
     unique_candidates = []
     for cand in candidates:
@@ -433,7 +530,6 @@ async def extract_media_endpoint(request: Request, file: UploadFile = File(...))
             seen_normalized.add(norm)
             unique_candidates.append(cand)
 
-    # 4. Ground candidates against authoritative sources
     verified_results = []
     dorar_queries_count = 0
     dorar_error_occurred = False
@@ -477,22 +573,47 @@ async def extract_media_endpoint(request: Request, file: UploadFile = File(...))
                 try:
                     h_text = c_text[:1000]
                     aggregate = simple_hadith_search(h_text)
-                    presentation = simple_text_presentation(aggregate.get("results", []), h_text)
-                    selected = presentation.get("selected")
-                    if selected:
-                        selected_records = selected.get("records", [])
+                    if not aggregate.get("results"):
+                        for alt_q in extract_hadith_fallback_queries(h_text):
+                            fallback_agg = simple_hadith_search(alt_q)
+                            if fallback_agg.get("results"):
+                                aggregate = fallback_agg
+                                break
+
+                    results = aggregate.get("results", [])
+                    presentation = simple_text_presentation(results, h_text)
+                    matched = presentation.get("matched", False)
+                    best_match_group = None
+
+                    if matched:
+                        best_match_group = presentation.get("selected")
+                    elif results:
+                        norm_h = normalize_hadith_text(h_text)
+                        scored_groups = []
+                        for grp in [presentation.get("selected")] + presentation.get("alternates", []):
+                            if not grp:
+                                continue
+                            norm_grp_text = normalize_hadith_text(grp.get("text", ""))
+                            score = fuzz.token_set_ratio(norm_h, norm_grp_text)
+                            scored_groups.append((score, grp))
+                        scored_groups.sort(key=lambda item: item[0], reverse=True)
+                        if scored_groups and scored_groups[0][0] >= 55.0:
+                            best_match_group = scored_groups[0][1]
+
+                    if best_match_group:
+                        selected_records = best_match_group.get("records", [])
                         verified_results.append({
                             "type": "hadith",
                             "verified": True,
                             "extractedText": c_text,
                             "confidence": c_conf,
-                            "displayText": selected["text"],
+                            "displayText": best_match_group["text"],
                             "source": {
                                 "name": "الدرر السنية",
                                 "url": aggregate.get("sourceUrl"),
                             },
                             "mixedCategories": aggregate.get("mixedCategories", False),
-                            "categoryLabels": selected.get("categoryLabels", []),
+                            "categoryLabels": best_match_group.get("categoryLabels", []),
                             "records": selected_records,
                             "alternatesCount": len(presentation.get("alternates", [])),
                         })
@@ -532,22 +653,47 @@ async def extract_media_endpoint(request: Request, file: UploadFile = File(...))
                 try:
                     h_text = c_text[:1000]
                     aggregate = simple_hadith_search(h_text)
-                    presentation = simple_text_presentation(aggregate.get("results", []), h_text)
-                    selected = presentation.get("selected")
-                    if selected:
-                        selected_records = selected.get("records", [])
+                    if not aggregate.get("results"):
+                        for alt_q in extract_hadith_fallback_queries(h_text):
+                            fallback_agg = simple_hadith_search(alt_q)
+                            if fallback_agg.get("results"):
+                                aggregate = fallback_agg
+                                break
+
+                    results = aggregate.get("results", [])
+                    presentation = simple_text_presentation(results, h_text)
+                    matched = presentation.get("matched", False)
+                    best_match_group = None
+
+                    if matched:
+                        best_match_group = presentation.get("selected")
+                    elif results:
+                        norm_h = normalize_hadith_text(h_text)
+                        scored_groups = []
+                        for grp in [presentation.get("selected")] + presentation.get("alternates", []):
+                            if not grp:
+                                continue
+                            norm_grp_text = normalize_hadith_text(grp.get("text", ""))
+                            score = fuzz.token_set_ratio(norm_h, norm_grp_text)
+                            scored_groups.append((score, grp))
+                        scored_groups.sort(key=lambda item: item[0], reverse=True)
+                        if scored_groups and scored_groups[0][0] >= 55.0:
+                            best_match_group = scored_groups[0][1]
+
+                    if best_match_group:
+                        selected_records = best_match_group.get("records", [])
                         verified_results.append({
                             "type": "hadith",
                             "verified": True,
                             "extractedText": c_text,
                             "confidence": c_conf,
-                            "displayText": selected["text"],
+                            "displayText": best_match_group["text"],
                             "source": {
                                 "name": "الدرر السنية",
                                 "url": aggregate.get("sourceUrl"),
                             },
                             "mixedCategories": aggregate.get("mixedCategories", False),
-                            "categoryLabels": selected.get("categoryLabels", []),
+                            "categoryLabels": best_match_group.get("categoryLabels", []),
                             "records": selected_records,
                             "alternatesCount": len(presentation.get("alternates", [])),
                         })
@@ -555,32 +701,229 @@ async def extract_media_endpoint(request: Request, file: UploadFile = File(...))
                     dorar_error_occurred = True
                     logger.warning("Dorar search failed for unknown candidate '%s': %s", c_text, err)
 
-    if verified_results:
+    return verified_results, dorar_error_occurred, unique_candidates
+
+
+class RemoteMediaJobRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    url: StrictStr
+
+    @field_validator("url")
+    @classmethod
+    def validate_url(cls, value: str) -> str:
+        val = value.strip()
+        if not val or len(val) > 1000:
+            raise ValueError("الرجاء إدخال رابط صالح.")
+        return val
+
+
+def run_remote_media_job(job_id: str, url: str, client_ip: str):
+    job = job_registry.get_job(job_id)
+    if not job:
+        return
+
+    job_registry.update_job(job_id, status="processing", stage="validating_url", progress=10, message="جارٍ قراءة الرابط...")
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_path = Path(temp_dir)
+        try:
+            # Stage 1: Validate URL
+            validated_url = validate_remote_url(url)
+
+            # Stage 2: Metadata inspection
+            job_registry.update_job(job_id, stage="reading_metadata", progress=20, message="جارٍ قراءة بيانات المقطع...")
+            meta = inspect_remote_media_metadata(validated_url)
+            duration = meta.get("duration") or 0.0
+
+            # Stage 3: Download complete audio
+            job_registry.update_job(job_id, stage="downloading_audio", progress=35, message="جارٍ تنزيل الصوت...")
+            raw_media = download_raw_media(validated_url, temp_path)
+
+            # Stage 4: Normalize audio to mono 16kHz WAV
+            job_registry.update_job(job_id, stage="normalizing_audio", progress=50, message="جارٍ معالجة الصوت...")
+            normalized_wav = temp_path / "normalized.wav"
+            actual_duration = normalize_audio_to_wav(raw_media, normalized_wav)
+            if actual_duration > 0:
+                duration = actual_duration
+
+            # Clean raw media file immediately
+            if raw_media.exists():
+                try:
+                    raw_media.unlink()
+                except Exception:
+                    pass
+
+            # Stage 5: Chunk audio and extract candidates
+            job_registry.update_job(job_id, stage="analyzing_audio", progress=65, message="جارٍ تحليل المقطع...")
+            chunks_dir = temp_path / "chunks"
+            chunks_dir.mkdir(exist_ok=True)
+            chunks = split_audio_into_chunks(normalized_wav, chunks_dir, duration)
+
+            def on_chunk_progress(completed: int, total: int):
+                pct = 65 + int(20 * (completed / max(1, total)))
+                job_registry.update_job(
+                    job_id,
+                    progress=pct,
+                    message=f"جارٍ تحليل المقطع ({completed}/{total})...",
+                )
+
+            candidates, partial_processing = extract_candidates_from_chunks(
+                chunks,
+                client_ip=client_ip,
+                on_chunk_progress=on_chunk_progress,
+            )
+
+            # Stage 6: Visual keyframe fallback if 0 audio candidates and short video
+            if not candidates and duration <= 180:
+                job_registry.update_job(
+                    job_id,
+                    stage="visual_fallback",
+                    progress=88,
+                    message="لم يُكتشف نص صوتي؛ جارٍ فحص الإطارات البصرية للمقطع...",
+                )
+                try:
+                    candidates = try_visual_fallback_for_short_video(validated_url, duration, client_ip=client_ip)
+                    logger.info("Visual fallback for job %s returned %d candidates", job_id, len(candidates))
+                except Exception as kf_err:
+                    logger.warning("Visual fallback for job %s failed: %s", job_id, kf_err)
+
+            # Stage 7: Deduplicate candidates
+            deduped_candidates = deduplicate_extracted_candidates(candidates)
+
+            # Stage 8: Ground candidates against authoritative sources
+            job_registry.update_job(
+                job_id,
+                stage="matching_sources",
+                progress=92,
+                message="جارٍ مطابقة النص مع المصادر...",
+            )
+            verified_results, dorar_error_occurred, unique_cands = ground_candidates_to_results(deduped_candidates)
+
+            # Build final compatible result shape
+            if verified_results:
+                final_result = {
+                    "status": "candidates",
+                    "mediaType": "video",
+                    "results": verified_results,
+                    "sourcePlatform": meta.get("extractor"),
+                    "sourceTitle": meta.get("title"),
+                    "sourceUrl": validated_url,
+                    "partialProcessing": partial_processing,
+                }
+            elif dorar_error_occurred and not any(c.get("type") == "quran" for c in unique_cands):
+                final_result = {
+                    "status": "temporarily_unavailable",
+                    "mediaType": "video",
+                    "results": [],
+                    "message": "تعذّر الاتصال بمصدر الحديث حاليًا للتحقق من النص. حاول مرة أخرى لاحقًا.",
+                    "sourcePlatform": meta.get("extractor"),
+                    "sourceTitle": meta.get("title"),
+                    "sourceUrl": validated_url,
+                }
+            else:
+                final_result = {
+                    "status": "not_found",
+                    "mediaType": "video",
+                    "results": [],
+                    "message": "لم نتمكن من العثور على آية أو حديث موثّق يطابق المحتوى.",
+                    "sourcePlatform": meta.get("extractor"),
+                    "sourceTitle": meta.get("title"),
+                    "sourceUrl": validated_url,
+                }
+
+            job_registry.update_job(
+                job_id,
+                status="completed",
+                stage="completed",
+                progress=100,
+                message="اكتمل الفحص والمطابقة بنجاح.",
+                result=final_result,
+            )
+
+        except RemoteMediaError as exc:
+            logger.warning("Remote media job %s failed with %s: %s", job_id, exc.code, exc.message)
+            job_registry.update_job(
+                job_id,
+                status="failed",
+                stage="failed",
+                progress=100,
+                message=exc.message,
+                error={"code": exc.code, "message": exc.message},
+            )
+        except OpenRouterRateLimited:
+            msg = "تجاوزت الحد المسموح من طلبات البحث بالوسائط. يُرجى الانتظار قليلًا."
+            job_registry.update_job(
+                job_id,
+                status="failed",
+                stage="failed",
+                progress=100,
+                message=msg,
+                error={"code": "ai_rate_limited", "message": msg},
+            )
+        except OpenRouterTimeout:
+            msg = "استغرقت معالجة الذكاء الاصطناعي وقتًا أطول من المعتاد. يرجى إعادة المحاولة."
+            job_registry.update_job(
+                job_id,
+                status="failed",
+                stage="failed",
+                progress=100,
+                message=msg,
+                error={"code": "ai_timeout", "message": msg},
+            )
+        except (OpenRouterSourceError, OpenRouterError):
+            msg = "تعذّر استخراج النص من الوسائط حاليًا. حاول مرة أخرى."
+            job_registry.update_job(
+                job_id,
+                status="failed",
+                stage="failed",
+                progress=100,
+                message=msg,
+                error={"code": "ai_unavailable", "message": msg},
+            )
+        except Exception as exc:
+            logger.exception("Unexpected error in remote media job %s", job_id)
+            msg = "حدث خطأ غير متوقع أثناء معالجة المقطع."
+            job_registry.update_job(
+                job_id,
+                status="failed",
+                stage="failed",
+                progress=100,
+                message=msg,
+                error={"code": "media_processing_failed", "message": msg},
+            )
+
+
+@app.post("/api/media/url/jobs")
+async def create_url_job(
+    payload: RemoteMediaJobRequest,
+    request: Request,
+    background_tasks: BackgroundTasks,
+) -> JSONResponse:
+    client_ip = get_client_ip(request)
+    try:
+        validated_url = validate_remote_url(payload.url)
+    except RemoteMediaError as exc:
         return JSONResponse(
-            content={
-                "status": "candidates",
-                "mediaType": processed.kind,
-                "results": verified_results,
-            }
+            status_code=exc.status_code,
+            content={"code": exc.code, "message": exc.message},
         )
-    elif dorar_error_occurred and not any(c.get("type") == "quran" for c in unique_candidates):
+
+    job = job_registry.create_job(validated_url, client_ip)
+    background_tasks.add_task(run_remote_media_job, job.job_id, validated_url, client_ip)
+
+    return JSONResponse(status_code=202, content={"jobId": job.job_id, "status": "queued"})
+
+
+@app.get("/api/media/url/jobs/{job_id}")
+def get_url_job_status(job_id: str) -> JSONResponse:
+    job = job_registry.get_job(job_id)
+    if not job:
         return JSONResponse(
-            content={
-                "status": "temporarily_unavailable",
-                "mediaType": processed.kind,
-                "results": [],
-                "message": "تعذّر الاتصال بمصدر الحديث حاليًا للتحقق من النص. حاول مرة أخرى لاحقًا.",
-            }
+            status_code=404,
+            content={"code": "job_not_found", "message": "لم يتم العثور على مهمة الفحص المطلوبة."},
         )
-    else:
-        return JSONResponse(
-            content={
-                "status": "not_found",
-                "mediaType": processed.kind,
-                "results": [],
-                "message": "لم نتمكن من العثور على آية أو حديث موثّق يطابق المحتوى.",
-            }
-        )
+
+    return JSONResponse(content=job.to_dict())
 
 
 @app.get("/")

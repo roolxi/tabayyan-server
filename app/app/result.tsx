@@ -18,6 +18,7 @@ import { QuranResultCard } from "../src/components/results/QuranResultCard";
 import { HadithResultCard } from "../src/components/results/HadithResultCard";
 import { SourceDisclaimer } from "../src/components/results/SourceDisclaimer";
 import { useScanContext } from "../src/context/ScanContext";
+import { useTabNavigation } from "../src/hooks/useTabNavigation";
 import {
   MediaHadithResult,
   MediaQuranResult,
@@ -33,21 +34,22 @@ export default function ResultScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { scanResult, clearScanResult } = useScanContext();
+  const { navigateToTab } = useTabNavigation();
 
   const handleScanNewMedia = () => {
     Haptics.selectionAsync();
     clearScanResult();
-    router.replace("/scan" as unknown as never);
+    navigateToTab("/scan", { force: true });
   };
 
   const handleManualSearch = () => {
     Haptics.selectionAsync();
-    router.push("/search" as unknown as never);
+    navigateToTab("/search");
   };
 
   const handleGoHome = () => {
     Haptics.selectionAsync();
-    router.replace("/" as unknown as never);
+    navigateToTab("/");
   };
 
   const renderCandidateItem = ({ item }: { item: MediaResultItem }) => {

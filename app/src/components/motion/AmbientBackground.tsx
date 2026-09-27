@@ -8,18 +8,21 @@ import {
 import { LinearGradient } from "expo-linear-gradient";
 import Animated, {
   Easing,
+  cancelAnimation,
   useAnimatedStyle,
   useSharedValue,
   withRepeat,
   withTiming,
 } from "react-native-reanimated";
 import { colors } from "../../theme/colors";
+import { useSceneMotion } from "../../hooks/useSceneMotion";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 
 export const AmbientBackground: React.FC<{ children?: React.ReactNode }> = ({
   children,
 }) => {
+  const motionEnabled = useSceneMotion();
   const [reduceMotion, setReduceMotion] = useState<boolean>(false);
 
   const orb1TranslateX = useSharedValue(0);
@@ -47,7 +50,7 @@ export const AmbientBackground: React.FC<{ children?: React.ReactNode }> = ({
   }, []);
 
   useEffect(() => {
-    if (reduceMotion) {
+    if (reduceMotion || !motionEnabled) {
       orb1TranslateX.value = 0;
       orb1TranslateY.value = 0;
       orb2TranslateX.value = 0;
@@ -77,7 +80,10 @@ export const AmbientBackground: React.FC<{ children?: React.ReactNode }> = ({
       -1,
       true
     );
-  }, [reduceMotion]);
+    return () => {
+      [orb1TranslateX, orb1TranslateY, orb2TranslateX, orb2TranslateY].forEach(cancelAnimation);
+    };
+  }, [reduceMotion, motionEnabled]);
 
   const animatedOrb1Style = useAnimatedStyle(() => ({
     transform: [
@@ -108,7 +114,7 @@ export const AmbientBackground: React.FC<{ children?: React.ReactNode }> = ({
           pointerEvents="none"
         >
           <LinearGradient
-            colors={["rgba(52, 211, 153, 0.18)", "rgba(7, 26, 20, 0.0)"]}
+            colors={["rgba(52, 211, 153, 0.09)", "rgba(7, 26, 20, 0.0)"]}
             style={styles.orbGradient}
           />
         </Animated.View>
@@ -119,7 +125,7 @@ export const AmbientBackground: React.FC<{ children?: React.ReactNode }> = ({
           pointerEvents="none"
         >
           <LinearGradient
-            colors={["rgba(167, 243, 208, 0.12)", "rgba(6, 95, 70, 0.0)"]}
+            colors={["rgba(167, 243, 208, 0.05)", "rgba(6, 95, 70, 0.0)"]}
             style={styles.orbGradient}
           />
         </Animated.View>
@@ -174,4 +180,3 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(215, 182, 106, 0.025)",
   },
 });
-

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   AccessibilityInfo,
   StyleSheet,
@@ -8,6 +8,7 @@ import {
 import * as Haptics from "expo-haptics";
 import Animated, {
   Easing,
+  cancelAnimation,
   interpolate,
   runOnJS,
   useAnimatedStyle,
@@ -52,6 +53,8 @@ export const ScanProgress: React.FC<ScanProgressProps> = ({
   onIrisOpened,
 }) => {
   const stages = mediaType === "image" ? IMAGE_STAGES : VIDEO_STAGES;
+  const completionRef = useRef(onIrisOpened);
+  completionRef.current = onIrisOpened;
   const [currentStageIndex, setCurrentStageIndex] = useState<number>(0);
   const [reduceMotion, setReduceMotion] = useState<boolean>(false);
 
@@ -86,9 +89,7 @@ export const ScanProgress: React.FC<ScanProgressProps> = ({
       const triggerIrisSafe = () => {
         if (!triggered) {
           triggered = true;
-          if (onIrisOpened) {
-            onIrisOpened();
-          }
+          completionRef.current?.();
         }
       };
 
@@ -127,7 +128,7 @@ export const ScanProgress: React.FC<ScanProgressProps> = ({
       easing: Easing.out(Easing.quad),
     });
 
-    rotation.value = withRepeat(
+    rotation.value = reduceMotion ? 0 : withRepeat(
       withTiming(360, { duration: 3200, easing: Easing.linear }),
       -1,
       false
@@ -142,7 +143,11 @@ export const ScanProgress: React.FC<ScanProgressProps> = ({
       });
     }, intervalMs);
 
-    return () => clearInterval(intervalId);
+    return () => {
+      clearInterval(intervalId);
+      cancelAnimation(rotation);
+      cancelAnimation(progress);
+    };
   }, [isComplete, isError, mediaType, reduceMotion]);
 
   const animatedRingStyle = useAnimatedStyle(() => {
@@ -155,7 +160,7 @@ export const ScanProgress: React.FC<ScanProgressProps> = ({
     };
   });
 
-  const currentStageText = stages[currentStageIndex];
+  const currentStageText = isComplete ? "اكتمل التحقق" : "جارٍ فحص المحتوى";
 
   return (
     <View
@@ -174,6 +179,10 @@ export const ScanProgress: React.FC<ScanProgressProps> = ({
             ]}
           />
         </Animated.View>
+        <View pointerEvents="none" style={{
+          position: "absolute", width: RING_SIZE + 26, height: RING_SIZE + 26,
+          borderRadius: 999, borderWidth: 1, borderColor: "rgba(215,182,106,0.18)",
+        }} />
 
         {/* Inner Glass Core */}
         <AdaptiveGlass
@@ -190,7 +199,7 @@ export const ScanProgress: React.FC<ScanProgressProps> = ({
             ) : (
               <>
                 <Text style={styles.stageNumber}>
-                  {currentStageIndex + 1} / {stages.length}
+                  {isComplete ? "✓" : "تبيّن"}
                 </Text>
                 <Text style={styles.stageLabel}>{currentStageText}</Text>
                 <Text style={styles.subtext}>جارٍ التحقق من المصدر...</Text>

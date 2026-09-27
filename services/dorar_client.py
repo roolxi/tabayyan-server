@@ -8,7 +8,9 @@ import tempfile
 import json
 import re
 from pathlib import Path
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin, urlparse, urlencode
+import urllib.request
+import urllib.error
 
 
 DORAR_URL = "https://dorar.net/hadith/search"
@@ -138,6 +140,37 @@ def _curl_once(curl_path: str, url: str, query: str | None, degree: int | None, 
     return status, raw_headers, locations, effective_url
 
 
+def _fetch_urllib(query: str, degree: int | None = None) -> DorarPage:
+    params: dict[str, str] = {"q": query}
+    if degree is not None:
+        params["d[]"] = str(degree)
+    url = f"{DORAR_URL}?{urlencode(params)}"
+    logger.info("Dorar stage=fetch transport=urllib query_length=%d", len(query))
+    req = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "ar,en;q=0.9",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=CURL_TIMEOUT_SECONDS) as resp:
+            html_bytes = resp.read(MAX_RESPONSE_BYTES + 1)
+            if len(html_bytes) > MAX_RESPONSE_BYTES:
+                raise DorarSourceError("upstream response exceeded limit")
+            html = html_bytes.decode("utf-8", errors="replace")
+            return DorarPage(html=html, source_url=resp.geturl())
+    except urllib.error.HTTPError as e:
+        logger.warning("Dorar urllib HTTP error: %d", e.code)
+        if e.code in {403, 429}:
+            raise DorarBlocked(f"upstream status {e.code}") from e
+        raise DorarSourceError(f"upstream status {e.code}") from e
+    except (urllib.error.URLError, TimeoutError, OSError) as e:
+        logger.warning("Dorar urllib network error: %s", e)
+        raise DorarTimeout("Dorar request timed out or network error") from e
+
+
 def fetch_page(query: str, degree: int | None = None) -> DorarPage:
     key = (query, degree)
     cached = _cached(key)
@@ -146,7 +179,10 @@ def fetch_page(query: str, degree: int | None = None) -> DorarPage:
 
     curl_path = shutil.which("curl.exe") or shutil.which("curl")
     if not curl_path:
-        raise DorarCurlError("curl executable is unavailable")
+        page = _fetch_urllib(query, degree)
+        _store(key, page)
+        return page
+
     logger.info("Dorar stage=fetch transport=curl path=%s query_length=%d", curl_path, len(query))
     try:
         with tempfile.TemporaryDirectory(prefix="dorar-") as temp:
@@ -157,7 +193,7 @@ def fetch_page(query: str, degree: int | None = None) -> DorarPage:
             for redirect_count in range(4):
                 status, raw_headers, locations, effective_url = _curl_once(
                     curl_path,
-                        current_url,
+                    current_url,
                     query if redirect_count == 0 else None,
                     degree if redirect_count == 0 else None,
                     output,
@@ -196,11 +232,10 @@ def fetch_page(query: str, degree: int | None = None) -> DorarPage:
                 break
             else:
                 raise DorarBlocked("redirect limit exceeded")
-    except DorarError:
-        raise
-    except OSError as error:
-        logger.exception("Dorar stage=fetch local_io_error")
-        raise DorarCurlError("curl output could not be read") from error
+    except (DorarBlocked, DorarCurlError, DorarSourceError, OSError) as err:
+        logger.warning("Dorar curl attempt failed (%s), falling back to urllib transport", err)
+        page = _fetch_urllib(query, degree)
+
     _store(key, page)
     return page
 

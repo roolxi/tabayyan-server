@@ -1,5 +1,6 @@
 import React from "react";
 import {
+  AccessibilityInfo,
   AccessibilityRole,
   Dimensions,
   Platform,
@@ -8,7 +9,7 @@ import {
   Text,
   View,
 } from "react-native";
-import { usePathname, useRouter } from "expo-router";
+import { usePathname } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 import Animated, {
@@ -17,6 +18,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { SymbolView } from "expo-symbols";
 import { AdaptiveGlass } from "./AdaptiveGlass";
+import { useTabNavigation, TabRoute } from "../../hooks/useTabNavigation";
 import { colors } from "../../theme/colors";
 import { springConfigs } from "../../theme/motion";
 import { radii, spacing } from "../../theme/spacing";
@@ -24,7 +26,7 @@ import { shadows } from "../../theme/shadows";
 
 interface DockTab {
   key: string;
-  route: string;
+  route: TabRoute;
   label: string;
   symbol: "house.fill" | "magnifyingglass" | "viewfinder";
   accessibilityLabel: string;
@@ -58,11 +60,30 @@ const DOCK_WIDTH = Math.min(Dimensions.get("window").width - 48, 360);
 const TAB_WIDTH = (DOCK_WIDTH - 12) / TABS.length;
 
 export const GlassDock: React.FC = () => {
-  const router = useRouter();
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
+  const { navigateToTab } = useTabNavigation();
+  const [reduceMotion, setReduceMotion] = React.useState<boolean>(false);
 
-  // Determine active tab index
+  React.useEffect(() => {
+    let active = true;
+    AccessibilityInfo.isReduceMotionEnabled()
+      .then((enabled) => {
+        if (active) setReduceMotion(enabled);
+      })
+      .catch(() => {});
+
+    const sub = AccessibilityInfo.addEventListener("reduceMotionChanged", (enabled) => {
+      setReduceMotion(enabled);
+    });
+
+    return () => {
+      active = false;
+      sub.remove();
+    };
+  }, []);
+
+  // Determine active tab index from visual left-to-right dock order
   let activeIndex = 0;
   if (pathname === "/search") activeIndex = 1;
   else if (pathname === "/scan" || pathname === "/result") activeIndex = 2;
@@ -70,22 +91,23 @@ export const GlassDock: React.FC = () => {
   const handleTabPress = (tab: DockTab, index: number) => {
     if (index !== activeIndex) {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      router.push(tab.route as unknown as never);
+      navigateToTab(tab.route);
     }
   };
 
-  // Reanimated style for the sliding indicator capsule
+  // Reanimated style for the sliding indicator capsule across physical dock order (Left to Right)
   const capsuleStyle = useAnimatedStyle(() => {
-    // In RTL, tab 0 is rightmost, tab 1 is center, tab 2 is leftmost
     const offset = activeIndex * TAB_WIDTH;
     return {
       transform: [
         {
-          translateX: withSpring(offset, springConfigs.dockCapsule),
+          translateX: reduceMotion
+            ? offset
+            : withSpring(offset, springConfigs.dockCapsule),
         },
       ],
     };
-  }, [activeIndex]);
+  }, [activeIndex, reduceMotion]);
 
   return (
     <View
@@ -179,7 +201,7 @@ const styles = StyleSheet.create({
   },
   tabsRow: {
     flex: 1,
-    flexDirection: "row", // Left to right mapping with RTL translated indices
+    flexDirection: "row", // Physical left-to-right dock layout: Home (0), Search (1), Scan (2)
     alignItems: "center",
     position: "relative",
   },

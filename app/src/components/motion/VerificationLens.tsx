@@ -12,6 +12,7 @@ import * as Haptics from "expo-haptics";
 import { Accelerometer } from "expo-sensors";
 import Animated, {
   Easing,
+  cancelAnimation,
   FadeInDown,
   FadeOutUp,
   useAnimatedStyle,
@@ -27,6 +28,7 @@ import { colors } from "../../theme/colors";
 import { durations, springConfigs } from "../../theme/motion";
 import { radii, spacing } from "../../theme/spacing";
 import { shadows } from "../../theme/shadows";
+import { useSceneMotion } from "../../hooks/useSceneMotion";
 
 const LENS_SIZE = 148;
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
@@ -42,6 +44,7 @@ export const VerificationLens: React.FC<VerificationLensProps> = ({
   onPickImage,
   onPickVideo,
 }) => {
+  const motionEnabled = useSceneMotion();
   const [isExpanded, setIsExpanded] = useState<boolean>(false);
   const [reduceMotion, setReduceMotion] = useState<boolean>(false);
 
@@ -70,7 +73,7 @@ export const VerificationLens: React.FC<VerificationLensProps> = ({
 
   // Breathing animation & spectral highlight rotation
   useEffect(() => {
-    if (reduceMotion) {
+    if (reduceMotion || !motionEnabled) {
       breathingScale.value = 1;
       rotationAngle.value = 0;
       return;
@@ -90,15 +93,17 @@ export const VerificationLens: React.FC<VerificationLensProps> = ({
       -1,
       false
     );
-  }, [reduceMotion]);
+    return () => { cancelAnimation(breathingScale); cancelAnimation(rotationAngle); };
+  }, [reduceMotion, motionEnabled]);
 
   // Subtle device tilt via accelerometer (only small parallax of a few pixels)
   useEffect(() => {
-    if (reduceMotion) return;
+    if (reduceMotion || !motionEnabled) return;
 
     let subscription: { remove: () => void } | null = null;
+    let active = true;
     Accelerometer.isAvailableAsync().then((available) => {
-      if (available) {
+      if (available && active) {
         Accelerometer.setUpdateInterval(100);
         subscription = Accelerometer.addListener(({ x, y }) => {
           // Clamp subtle offset to +- 6 pixels
@@ -106,12 +111,13 @@ export const VerificationLens: React.FC<VerificationLensProps> = ({
           tiltY.value = withSpring(Math.max(-6, Math.min(6, -y * 8)), springConfigs.soft);
         });
       }
-    });
+    }).catch(() => {});
 
     return () => {
+      active = false;
       subscription?.remove();
     };
-  }, [reduceMotion]);
+  }, [reduceMotion, motionEnabled]);
 
   const handlePressIn = () => {
     scale.value = withSpring(0.95, springConfigs.snappy);

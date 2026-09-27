@@ -137,7 +137,7 @@ export function normalizeMediaAsset(
 export async function uploadMedia(
   file: ReactNativeUploadFile,
   signal?: AbortSignal,
-  options?: { timeoutMs?: number }
+  options?: { timeoutMs?: number; perfId?: string } | string
 ): Promise<MediaExtractResponse> {
   const form = new FormData();
 
@@ -150,12 +150,16 @@ export async function uploadMedia(
     } as unknown as Blob
   );
 
+  const timeoutMs = typeof options === "object" ? options.timeoutMs : 45000;
+  const perfId = typeof options === "string" ? options : options?.perfId;
+
   return requestMultipart<MediaExtractResponse>(
     "/api/media/extract",
     form,
     {
       signal,
-      timeoutMs: options?.timeoutMs ?? 45000,
+      timeoutMs: timeoutMs ?? 45000,
+      perfId,
     }
   );
 }

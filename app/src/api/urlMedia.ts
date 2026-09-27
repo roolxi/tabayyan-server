@@ -1,13 +1,10 @@
 import { requestJson } from "./client";
 import { ApiError, UrlJobStatusResponse, UrlJobSubmitResponse } from "./types";
+import { perfTracker } from "../utils/perfTracker";
 
-// Strict pattern for validating URLs submitted to the backend (must be https)
-const STRICT_HTTPS_URL_REGEX =
-  /^https:\/\/(?:www\.|m\.)?(?:youtube\.com|youtu\.be|tiktok\.com|vm\.tiktok\.com|vt\.tiktok\.com|instagram\.com)\/[^\s]+$/i;
-
-// Permissive extraction pattern for detecting URLs inside shared text or pastes
-const EXTRACT_URL_REGEX =
-  /(?:https?:\/\/)?(?:www\.|m\.)?(?:youtube\.com|youtu\.be|tiktok\.com|vm\.tiktok\.com|vt\.tiktok\.com|instagram\.com)(?:\/[^\s]*)?/i;
+const HOSTS = new Set(["youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be",
+  "tiktok.com", "www.tiktok.com", "m.tiktok.com", "vm.tiktok.com", "vt.tiktok.com",
+  "instagram.com", "www.instagram.com", "instagr.am"]);
 
 /**
  * Checks if a string is a valid, supported remote media URL (HTTPS required).
@@ -15,7 +12,13 @@ const EXTRACT_URL_REGEX =
 export function isSupportedMediaUrl(url: string): boolean {
   if (!url || typeof url !== "string") return false;
   const trimmed = url.trim();
-  return STRICT_HTTPS_URL_REGEX.test(trimmed);
+  if (/\s/.test(trimmed)) return false;
+  try {
+    const parsed = new URL(trimmed);
+    return parsed.protocol === "https:" && HOSTS.has(parsed.hostname.toLowerCase()) &&
+      !parsed.username && !parsed.password && (!parsed.port || parsed.port === "443") &&
+      parsed.pathname.length > 1;
+  } catch { return false; }
 }
 
 /**
@@ -24,18 +27,14 @@ export function isSupportedMediaUrl(url: string): boolean {
  */
 export function extractSupportedUrlFromText(text: string): string | null {
   if (!text || typeof text !== "string") return null;
-  const match = text.match(EXTRACT_URL_REGEX);
-  if (!match) return null;
-
-  let candidate = match[0].trim();
-  // Strip trailing punctuation like comma, dot, parenthesis if attached
-  candidate = candidate.replace(/[.,;!?)]+$/, "");
-  if (!/^https?:\/\//i.test(candidate)) {
-    candidate = `https://${candidate}`;
-  } else if (/^http:\/\//i.test(candidate)) {
+  for (const token of text.split(/[\s<>"'()\[\]{}]+/)) {
+    let candidate = token.replace(/[.,;!?،؛]+$/, "");
+    if (!candidate) continue;
+    if (!/^[a-z][a-z\d+.-]*:/i.test(candidate)) candidate = "https://" + candidate;
     candidate = candidate.replace(/^http:\/\//i, "https://");
+    if (isSupportedMediaUrl(candidate)) return candidate;
   }
-  return candidate;
+  return null;
 }
 
 /**
@@ -43,7 +42,8 @@ export function extractSupportedUrlFromText(text: string): string | null {
  */
 export async function submitUrlJob(
   url: string,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  perfId?: string
 ): Promise<UrlJobSubmitResponse> {
   const cleaned = url.trim();
   if (!cleaned) {
@@ -55,15 +55,19 @@ export async function submitUrlJob(
     throw error;
   }
 
-  return requestJson<UrlJobSubmitResponse>(
+  if (perfId) perfTracker.recordJobSubmitStart(perfId);
+  const res = await requestJson<UrlJobSubmitResponse>(
     "/api/media/url/jobs",
     {
       method: "POST",
       body: { url: cleaned },
       signal,
       timeoutMs: 15000,
+      perfId,
     }
   );
+  if (perfId) perfTracker.recordJobSubmitDone(perfId);
+  return res;
 }
 
 /**
@@ -88,6 +92,7 @@ export interface PollJobOptions {
   signal?: AbortSignal;
   pollIntervalMs?: number;
   maxTimeoutMs?: number;
+  perfId?: string;
 }
 
 /**
@@ -109,6 +114,8 @@ export async function pollUrlJob(
   const maxTimeout = opts.maxTimeoutMs ?? 180000; // 3 minutes max polling
   const startTime = Date.now();
 
+  if (opts.perfId) perfTracker.recordPollStart(opts.perfId);
+
   while (true) {
     if (opts.signal?.aborted) {
       const error: ApiError = {
@@ -128,6 +135,7 @@ export async function pollUrlJob(
       throw error;
     }
 
+    if (opts.perfId) perfTracker.recordPollCycle(opts.perfId);
     const job = await getUrlJobStatus(jobId, opts.signal);
 
     if (opts.onProgress) {
@@ -135,6 +143,7 @@ export async function pollUrlJob(
     }
 
     if (job.status === "completed") {
+      if (opts.perfId) perfTracker.recordPollDone(opts.perfId);
       return job;
     }
 
@@ -149,7 +158,18 @@ export async function pollUrlJob(
     }
 
     // Wait interval before next poll
-    await new Promise((resolve) => setTimeout(resolve, interval));
+    await new Promise<void>((resolve, reject) => {
+      const onAbort = () => {
+        clearTimeout(timer);
+        opts.signal?.removeEventListener("abort", onAbort);
+        reject({ code: "cancelled", message: "تم إلغاء عملية الفحص.", statusCode: 499 });
+      };
+      const timer = setTimeout(() => {
+        opts.signal?.removeEventListener("abort", onAbort);
+        resolve();
+      }, interval);
+      if (opts.signal?.aborted) onAbort();
+      else opts.signal?.addEventListener("abort", onAbort, { once: true });
+    });
   }
 }
-

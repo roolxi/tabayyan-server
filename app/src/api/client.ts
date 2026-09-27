@@ -1,4 +1,5 @@
 import { ApiError } from "./types";
+import { perfTracker } from "../utils/perfTracker";
 
 const DEFAULT_TIMEOUT_MS = 25000;
 const DEFAULT_MULTIPART_TIMEOUT_MS = 45000;
@@ -24,12 +25,14 @@ export interface JsonRequestOptions {
   body?: unknown;
   signal?: AbortSignal;
   timeoutMs?: number;
+  perfId?: string;
 }
 
 export interface MultipartRequestOptions {
   headers?: Record<string, string>;
   signal?: AbortSignal;
   timeoutMs?: number;
+  perfId?: string;
 }
 
 /**
@@ -49,11 +52,9 @@ export async function requestJson<T>(
     controller.abort();
   }, timeoutMs);
 
-  if (options.signal) {
-    options.signal.addEventListener("abort", () => {
-      controller.abort();
-    });
-  }
+  const abort = () => controller.abort();
+  if (options.signal?.aborted) controller.abort();
+  else options.signal?.addEventListener("abort", abort, { once: true });
 
   const headers: Record<string, string> = {
     Accept: "application/json",
@@ -67,6 +68,9 @@ export async function requestJson<T>(
   }
 
   try {
+    if (options.signal?.aborted) throw { name: "AbortError" };
+    if (options.perfId) perfTracker.recordDispatch(options.perfId);
+
     const response = await fetch(url, {
       method: options.method || "GET",
       headers,
@@ -74,9 +78,12 @@ export async function requestJson<T>(
       signal: controller.signal,
     });
 
-    clearTimeout(timeoutId);
+    if (options.perfId) perfTracker.recordHeaders(options.perfId);
 
     const data = await response.json().catch(() => null);
+    if (options.perfId) perfTracker.recordBodyParsed(options.perfId);
+
+    if (controller.signal.aborted) throw { name: "AbortError" };
 
     if (!response.ok) {
       const error: ApiError = {
@@ -92,6 +99,9 @@ export async function requestJson<T>(
     clearTimeout(timeoutId);
 
     if ((err as { name?: string })?.name === "AbortError") {
+      if (options.signal?.aborted) {
+        throw { code: "cancelled", message: "تم إلغاء الطلب.", statusCode: 499 } satisfies ApiError;
+      }
       const timeoutError: ApiError = {
         code: "timeout",
         message: "استغرق الطلب وقتًا طويلاً وتجاوز المهلة المحددة. يرجى المحاولة مرة أخرى.",
@@ -110,6 +120,9 @@ export async function requestJson<T>(
       statusCode: 0,
     };
     throw networkError;
+  } finally {
+    clearTimeout(timeoutId);
+    options.signal?.removeEventListener("abort", abort);
   }
 }
 
@@ -193,7 +206,16 @@ export async function requestMultipart<T>(
         reject(networkError);
       };
 
+      if (options.perfId) {
+        xhr.onreadystatechange = () => {
+          if (xhr.readyState === 2 && options.perfId) {
+            perfTracker.recordHeaders(options.perfId);
+          }
+        };
+      }
+
       xhr.onload = () => {
+        if (options.perfId) perfTracker.recordBodyParsed(options.perfId);
         let data: any = null;
         try {
           data = JSON.parse(xhr.responseText);
@@ -214,6 +236,7 @@ export async function requestMultipart<T>(
       };
 
       try {
+        if (options.perfId) perfTracker.recordDispatch(options.perfId);
         xhr.send(formData as any);
       } catch (err: unknown) {
         if (typeof __DEV__ !== "undefined" && __DEV__) {

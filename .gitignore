@@ -15,6 +15,9 @@ htmlcov/
 # Logs and temporary files
 *.log
 *.tmp
+*.part
+extractor-test/
+.venv-extractor/
 .DS_Store
 Thumbs.db
 

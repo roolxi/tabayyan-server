@@ -16,6 +16,8 @@ export interface HadithResultCardProps {
   sourceUrl?: string | null;
   extractedText?: string;
   showContinueAction?: boolean;
+  isSpecialist?: boolean;
+  onSwitchToSpecialist?: () => void;
 }
 
 export const HadithResultCard: React.FC<HadithResultCardProps> = ({
@@ -25,15 +27,20 @@ export const HadithResultCard: React.FC<HadithResultCardProps> = ({
   sourceUrl,
   extractedText,
   showContinueAction = false,
+  isSpecialist = false,
+  onSwitchToSpecialist,
 }) => {
   const router = useRouter();
   const [isExpanded, setIsExpanded] = useState<boolean>(false);
+  const [showSpecialistDetails, setShowSpecialistDetails] = useState<boolean>(false);
 
   const isLongText = hadithText.length > 280;
+  const effectiveSourceUrl = record?.sourceUrl || sourceUrl;
+  const hasSpecialistDetails = Boolean(record?.takhrij || record?.gradeExplanation);
 
   const handleOpenSource = () => {
-    if (sourceUrl) {
-      Linking.openURL(sourceUrl).catch(() => {});
+    if (effectiveSourceUrl) {
+      Linking.openURL(effectiveSourceUrl).catch(() => {});
     }
   };
 
@@ -41,23 +48,33 @@ export const HadithResultCard: React.FC<HadithResultCardProps> = ({
     const query = extractedText || hadithText.slice(0, 100);
     router.push({
       pathname: "/search",
-      params: { q: query, type: "hadith" },
+      params: { q: query, type: "hadith", mode: isSpecialist ? "specialist" : "normal" },
     } as unknown as never);
   };
 
   return (
     <AdaptiveGlass
       borderRadius={radii.lg}
-      style={styles.cardContainer}
+      style={[
+        styles.cardContainer,
+        isSpecialist && styles.specialistCardBorder,
+      ]}
       highlightBorder
     >
-      {/* Header Tag */}
+      {/* Header Tag & Pro Badge */}
       <View style={styles.headerRow}>
-        <View style={styles.badge}>
-          <Text style={styles.badgeText}>الحديث الشريف</Text>
+        <View style={styles.badgeGroup}>
+          <View style={styles.badge}>
+            <Text style={styles.badgeText}>الحديث الشريف</Text>
+          </View>
+          {isSpecialist && (
+            <View style={styles.proBadge}>
+              <Text style={styles.proBadgeText}>وضع المتخصص (Pro)</Text>
+            </View>
+          )}
         </View>
 
-        {sourceUrl && (
+        {effectiveSourceUrl && (
           <Pressable
             onPress={handleOpenSource}
             accessible
@@ -70,12 +87,51 @@ export const HadithResultCard: React.FC<HadithResultCardProps> = ({
         )}
       </View>
 
+      {/* Category Labels (e.g. أحاديث صحيحة / ضعيفة) */}
+      {record?.categoryLabels && record.categoryLabels.length > 0 && (
+        <View style={styles.categoryPillsRow}>
+          {record.categoryLabels.map((lbl, idx) => {
+            const isWeak = lbl.includes("ضعيف") || lbl.includes("باطل") || lbl.includes("موضوع");
+            const isSahih = lbl.includes("صحيح") || lbl.includes("حسن");
+            return (
+              <View
+                key={`cat-${idx}`}
+                style={[
+                  styles.categoryPill,
+                  isSahih && styles.categoryPillSahih,
+                  isWeak && styles.categoryPillWeak,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.categoryPillText,
+                    isSahih && styles.categoryPillTextSahih,
+                    isWeak && styles.categoryPillTextWeak,
+                  ]}
+                >
+                  {lbl}
+                </Text>
+              </View>
+            );
+          })}
+        </View>
+      )}
+
       {/* Mixed Category Warning Notice if results have mixed classifications */}
-      {mixedCategories && (
+      {mixedCategories && !isSpecialist && (
         <View style={styles.mixedNoticeContainer}>
           <Text style={styles.mixedNoticeText}>
-            ظهرت في نتائج البحث تصنيفات بالصحة وأخرى بالضعف؛ وقد تختلف ألفاظ الحديث أو أسانيده. يرجى الاطلاع على التفاصيل في الوضع المتخصص.
+            ظهرت في نتائج البحث تصنيفات بالصحة وأخرى بالضعف؛ وقد تختلف ألفاظ الحديث أو أسانيده.
           </Text>
+          {onSwitchToSpecialist && (
+            <Pressable
+              onPress={onSwitchToSpecialist}
+              style={styles.switchSpecialistBtn}
+              accessibilityRole="button"
+            >
+              <Text style={styles.switchSpecialistBtnText}>عرض التفاصيل في وضع المتخصص (Pro) ←</Text>
+            </Pressable>
+          )}
         </View>
       )}
 
@@ -138,6 +194,40 @@ export const HadithResultCard: React.FC<HadithResultCardProps> = ({
               </Text>
             </View>
           ) : null}
+
+          {/* Specialist Expandable Section: Takhrij and Grade Explanation */}
+          {hasSpecialistDetails && (
+            <View style={styles.specialistSection}>
+              <Pressable
+                onPress={() => setShowSpecialistDetails((prev) => !prev)}
+                style={styles.specialistToggle}
+                accessibilityRole="button"
+                accessibilityLabel="تبديل عرض تفاصيل التخريج والعلل"
+              >
+                <Text style={styles.specialistToggleText}>
+                  {showSpecialistDetails ? "إخفاء التخريج وشرح العلة ▲" : "عرض التخريج وتفاصيل الحكم ▼"}
+                </Text>
+              </Pressable>
+
+              {showSpecialistDetails && (
+                <View style={styles.specialistDetailsCard}>
+                  {record.gradeExplanation ? (
+                    <View style={styles.specialistDetailBlock}>
+                      <Text style={styles.specialistDetailLabel}>توضيح حكم المحدث / العلة:</Text>
+                      <Text style={styles.specialistDetailValue}>{record.gradeExplanation}</Text>
+                    </View>
+                  ) : null}
+
+                  {record.takhrij ? (
+                    <View style={styles.specialistDetailBlock}>
+                      <Text style={styles.specialistDetailLabel}>التخريج:</Text>
+                      <Text style={styles.specialistDetailValue}>{record.takhrij}</Text>
+                    </View>
+                  ) : null}
+                </View>
+              )}
+            </View>
+          )}
         </View>
       )}
 
@@ -244,6 +334,111 @@ const styles = StyleSheet.create({
   gradeText: {
     color: colors.warmGold,
     fontWeight: "700",
+  },
+  specialistCardBorder: {
+    borderRightColor: colors.emerald,
+    borderRightWidth: 4,
+  },
+  badgeGroup: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: spacing.xs,
+  },
+  proBadge: {
+    backgroundColor: "rgba(10, 194, 139, 0.18)",
+    paddingVertical: 3,
+    paddingHorizontal: 8,
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    borderColor: "rgba(10, 194, 139, 0.4)",
+  },
+  proBadgeText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: colors.emerald,
+  },
+  categoryPillsRow: {
+    flexDirection: "row-reverse",
+    flexWrap: "wrap",
+    gap: spacing.xs,
+    marginBottom: spacing.sm,
+  },
+  categoryPill: {
+    backgroundColor: "rgba(244, 241, 232, 0.08)",
+    paddingVertical: 2,
+    paddingHorizontal: 8,
+    borderRadius: radii.full,
+    borderWidth: 1,
+    borderColor: "rgba(244, 241, 232, 0.15)",
+  },
+  categoryPillSahih: {
+    backgroundColor: "rgba(10, 194, 139, 0.15)",
+    borderColor: "rgba(10, 194, 139, 0.35)",
+  },
+  categoryPillWeak: {
+    backgroundColor: "rgba(235, 87, 87, 0.15)",
+    borderColor: "rgba(235, 87, 87, 0.35)",
+  },
+  categoryPillText: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: colors.muted,
+  },
+  categoryPillTextSahih: {
+    color: colors.emerald,
+  },
+  categoryPillTextWeak: {
+    color: "#ff8080",
+  },
+  switchSpecialistBtn: {
+    marginTop: spacing.xs + 2,
+    alignSelf: "flex-end",
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: radii.sm,
+    backgroundColor: "rgba(215, 182, 106, 0.2)",
+  },
+  switchSpecialistBtnText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: colors.warmGold,
+  },
+  specialistSection: {
+    marginTop: spacing.xs + 2,
+  },
+  specialistToggle: {
+    alignSelf: "flex-end",
+    paddingVertical: 4,
+    paddingHorizontal: 6,
+  },
+  specialistToggleText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: colors.spectralMint,
+  },
+  specialistDetailsCard: {
+    marginTop: spacing.xs,
+    padding: spacing.sm + 2,
+    backgroundColor: "rgba(5, 18, 14, 0.6)",
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: "rgba(10, 194, 139, 0.2)",
+    gap: spacing.sm,
+  },
+  specialistDetailBlock: {
+    gap: 3,
+  },
+  specialistDetailLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: colors.warmGold,
+    textAlign: "right",
+  },
+  specialistDetailValue: {
+    fontSize: 12,
+    lineHeight: 19,
+    color: colors.ivory,
+    textAlign: "right",
   },
   actionContainer: {
     marginTop: spacing.md,

@@ -10,14 +10,30 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.roolxi.tabayyan",
+      "buildNumber": "1",
       "infoPlist": {
         "NSCameraUsageDescription": "نحتاج إلى إذن الكاميرا لالتقاط صورة للآية أو الحديث والتحقق من نصها.",
         "NSPhotoLibraryUsageDescription": "نحتاج إلى إذن مكتبة الصور لاختيار صورة أو فيديو للآية أو الحديث.",
-        "NSMotionUsageDescription": "نحتاج إلى استخدام حساسات الحركة لتقديم تأثيرات تفاعلية هادئة للعدسة."
+        "NSMotionUsageDescription": "نحتاج إلى استخدام حساسات الحركة لتقديم تأثيرات تفاعلية هادئة للعدسة.",
+        "NSAppTransportSecurity": {
+          "NSAllowsLocalNetworking": true,
+          "NSExceptionDomains": {
+            "10.66.66.2": {
+              "NSExceptionAllowsInsecureHTTPLoads": true,
+              "NSIncludesSubdomains": false
+            },
+            "38.242.147.82": {
+              "NSExceptionAllowsInsecureHTTPLoads": true,
+              "NSIncludesSubdomains": false
+            }
+          }
+        },
+        "NSLocalNetworkUsageDescription": "نحتاج الاتصال بخادم تبيّن على شبكتك المحلية للتحقق من النصوص والوسائط."
       }
     },
     "android": {
-      "package": "com.roolxi.tabayyan"
+      "package": "com.roolxi.tabayyan",
+      "versionCode": 1
     },
     "plugins": [
       "expo-router",
@@ -28,26 +44,13 @@
           "cameraPermission": "نحتاج إلى إذن الكاميرا لالتقاط صورة للآية أو الحديث والتحقق من نصها."
         }
       ],
-      "expo-font",
       [
-        "expo-sharing",
+        "expo-camera",
         {
-          "ios": {
-            "enabled": true,
-            "activationRule": {
-              "supportsText": true,
-              "supportsWebUrlWithMaxCount": 1,
-              "supportsWebPageWithMaxCount": 1,
-              "supportsImageWithMaxCount": 1,
-              "supportsMovieWithMaxCount": 1
-            }
-          },
-          "android": {
-            "enabled": true,
-            "singleShareMimeTypes": ["text/plain", "image/*", "video/*"]
-          }
+          "cameraPermission": "نحتاج إلى إذن الكاميرا لالتقاط صورة للآية أو الحديث والتحقق من نصها."
         }
-      ]
+      ],
+      "expo-font"
     ],
     "experiments": {
       "typedRoutes": true

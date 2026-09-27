@@ -1,408 +1,155 @@
-import React from "react";
-import {
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import React, { useState } from "react";
+import { Linking, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import * as Haptics from "expo-haptics";
-import * as Linking from "expo-linking";
-import { SymbolView } from "expo-symbols";
-import { AmbientBackground } from "../src/components/motion/AmbientBackground";
-import { AdaptiveGlass } from "../src/components/glass/AdaptiveGlass";
-import { colors } from "../src/theme/colors";
-import { radii, spacing } from "../src/theme/spacing";
-import { typography } from "../src/theme/typography";
-import { shadows } from "../src/theme/shadows";
-
-export default function AboutScreen() {
-  const router = useRouter();
-  const insets = useSafeAreaInsets();
-
-  const handleBack = () => {
-    Haptics.selectionAsync();
-    router.back();
-  };
-
-  const handleOpenLink = (url: string) => {
-    Linking.openURL(url).catch(() => {});
-  };
-
+import { Backdrop } from "../src/components/experience/Backdrop";
+import { Glass } from "../src/components/experience/Glass";
+import { GlassAction } from "../src/components/experience/GlassAction";
+import { AnimatedContent } from "../src/components/experience/AnimatedContent";
+import { SwipeToast } from "../src/components/experience/SwipeToast";
+import { palette } from "../src/components/experience/theme";
+export default function About() {
+  const router = useRouter(),
+    insets = useSafeAreaInsets(),
+    [error, setError] = useState("");
+  const open = (url: string) =>
+    void Linking.openURL(url).catch(() =>
+      setError("تعذّر فتح الرابط. حاول مرة أخرى."),
+    );
   return (
-    <AmbientBackground>
+    <View style={{ flex: 1, backgroundColor: palette.bg }}>
+      <Backdrop />
       <ScrollView
-        contentContainerStyle={[
-          styles.scrollContent,
-          {
-            paddingTop: insets.top + spacing.sm,
-            paddingBottom: insets.bottom + spacing.dockHeight + spacing.xl,
-          },
-        ]}
-        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{
+          padding: 24,
+          paddingTop: insets.top + 16,
+          paddingBottom: insets.bottom + 30,
+          maxWidth: 640,
+          width: "100%",
+          alignSelf: "center",
+        }}
       >
-        {/* Header Bar */}
-        <View style={styles.headerRow}>
-          <Pressable
-            onPress={handleBack}
-            accessible
-            accessibilityRole="button"
-            accessibilityLabel="العودة"
-            hitSlop={12}
-            style={styles.backButton}
-          >
-            <AdaptiveGlass borderRadius={radii.full} style={styles.backGlassCircle}>
-              {Platform.OS === "ios" ? (
-                <SymbolView name="chevron.backward" size={16} tintColor={colors.ivory} />
-              ) : (
-                <Text style={styles.backFallbackText}>←</Text>
-              )}
-            </AdaptiveGlass>
-          </Pressable>
-
-          <Text style={styles.headerTitle}>حول تبيّن</Text>
-          <View style={styles.headerSpacer} />
+        <View style={s.header}>
+          <Text style={s.title}>عن تبيّن</Text>
+          <GlassAction
+            label="إغلاق"
+            icon="close"
+            iconOnly
+            onPress={() =>
+              router.canGoBack() ? router.back() : router.replace("/")
+            }
+          />
         </View>
-
-        {/* Hero Card */}
-        <AdaptiveGlass
-          borderRadius={radii.xl}
-          style={[styles.heroCard, shadows.glassCard]}
-          highlightBorder
-        >
-          <View style={styles.heroBadgeRow}>
-            <View style={styles.heroDot} />
-            <Text style={styles.heroAppName}>تبيّن</Text>
-          </View>
-          <Text style={styles.heroTagline}>تحقّق من الآية أو الحديث، من مصدره.</Text>
-          <Text style={styles.heroDescription}>
-            تطبيق عربي مُصمم للآيفون يهدف إلى تمكين المستخدم من التحقق الفوري والموثّق من النصوص الدينية المتداولة عبر شبكات التواصل، الكتب، أو المقاطع المرئية والصوتية، بالرجوع الحصري إلى الأصول المعتمدة.
+        <AnimatedContent>
+          <Text style={s.lead}>كن على بيّنة.</Text>
+          <Text style={s.body}>
+            نساعدك على الوصول إلى أصل الآية أو الحديث من نص، صورة، أو مقطع.
           </Text>
-        </AdaptiveGlass>
-
-        {/* Section 1: Strict AI Boundary */}
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>الحدود الصارمة للذكاء الاصطناعي</Text>
-        </View>
-
-        <AdaptiveGlass
-          borderRadius={radii.lg}
-          style={styles.ruleCard}
-          highlightBorder
-        >
-          <Text style={styles.ruleNotice}>
-            الذكاء الاصطناعي وسيلة استخراج واسترجاع فقط، ولا يملك أي سلطة شرعية أو توثيقية:
-          </Text>
-
-          <View style={styles.bulletList}>
-            <View style={styles.bulletItem}>
-              <Text style={styles.bulletIcon}>⛔</Text>
-              <Text style={styles.bulletText}>
-                <Text style={styles.bulletBold}>لا يحكم على الأحاديث:</Text> لا يصنف الذكاء الاصطناعي أي حديث بالصحة أو الضعف، ولا يرجّح قول محدث على آخر.
-              </Text>
-            </View>
-
-            <View style={styles.bulletItem}>
-              <Text style={styles.bulletIcon}>⛔</Text>
-              <Text style={styles.bulletText}>
-                <Text style={styles.bulletBold}>لا يولّد النصوص المقدسة:</Text> كل نص قرآني أو حديث معروض مأخوذ حرفيًا من المصدر المعتمد، ولا يُسمح للنموذج بإعادة كتابته أو تعديله.
-              </Text>
-            </View>
-
-            <View style={styles.bulletItem}>
-              <Text style={styles.bulletIcon}>✅</Text>
-              <Text style={styles.bulletText}>
-                <Text style={styles.bulletBold}>دوره المحصور:</Text> استخراج الكلمات من الصور، وتفريغ الصوت من مقاطع الفيديو، واقتراح عبارات بحثية لمساعدة المستخدم في الوصول إلى المصدر.
-              </Text>
-            </View>
-          </View>
-        </AdaptiveGlass>
-
-        {/* Section 2: Authoritative Sources */}
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>المصادر المعتمدة</Text>
-        </View>
-
-        <Pressable
-          onPress={() => handleOpenLink("https://tanzil.net")}
-          accessible
-          accessibilityRole="link"
-          accessibilityLabel="موقع مشروع تنزيل للقرآن الكريم"
-          style={styles.sourcePressable}
-        >
-          <AdaptiveGlass
-            borderRadius={radii.lg}
-            style={styles.sourceCard}
-            highlightBorder
-          >
-            <View style={styles.sourceTopRow}>
-              <View style={styles.sourceBadgeQuran}>
-                <Text style={styles.sourceBadgeQuranText}>القرآن الكريم</Text>
+        </AnimatedContent>
+        <AnimatedContent delay={70}>
+          <Glass style={s.card}>
+            <Text style={s.subtitle}>كيف يعمل؟</Text>
+            {[
+              [
+                "01",
+                "اكتب أو أرفق",
+                "نستخرج عبارة البحث من المحتوى الذي تختاره.",
+              ],
+              [
+                "02",
+                "نبحث في المصادر",
+                "نطابق العبارة مع مصدر القرآن أو الموسوعة الحديثية.",
+              ],
+              [
+                "03",
+                "اقرأ الأصل",
+                "النص والحكم والتخريج مع رابط المصدر للاطلاع.",
+              ],
+            ].map(([n, title, body]) => (
+              <View key={n} style={s.step}>
+                <Text style={s.number}>{n}</Text>
+                <View style={{ flex: 1, gap: 6 }}>
+                  <Text style={s.subtitle}>{title}</Text>
+                  <Text style={s.body}>{body}</Text>
+                </View>
               </View>
-              <Text style={styles.sourceLinkHint}>tanzil.net ↗</Text>
-            </View>
-            <Text style={styles.sourceName}>مشروع تنزيل (Tanzil Project)</Text>
-            <Text style={styles.sourceDetails}>
-              قاعدة بيانات محلية موثوقة للقرآن الكريم بالرسم العثماني. البحث يتم محليًا بالكامل لضمان الدقة والتطابق التام مع المصحف الشريف.
+            ))}
+          </Glass>
+        </AnimatedContent>
+        <AnimatedContent delay={120}>
+          <Glass style={s.card}>
+            <Text style={s.subtitle}>المصادر</Text>
+            <Text style={s.body}>
+              القرآن الكريم من قاعدة القرآن المعتمدة في الخادم. والأحاديث وأحكام
+              المحدّثين من الدرر السنية.
             </Text>
-          </AdaptiveGlass>
-        </Pressable>
-
-        <Pressable
-          onPress={() => handleOpenLink("https://dorar.net")}
-          accessible
-          accessibilityRole="link"
-          accessibilityLabel="موقع الدرر السنية للحديث الشريف"
-          style={styles.sourcePressable}
-        >
-          <AdaptiveGlass
-            borderRadius={radii.lg}
-            style={styles.sourceCard}
-            highlightBorder
-          >
-            <View style={styles.sourceTopRow}>
-              <View style={styles.sourceBadgeHadith}>
-                <Text style={styles.sourceBadgeHadithText}>الحديث الشريف</Text>
-              </View>
-              <Text style={styles.sourceLinkHint}>dorar.net ↗</Text>
-            </View>
-            <Text style={styles.sourceName}>موسوعة الدرر السنية</Text>
-            <Text style={styles.sourceDetails}>
-              الموسوعة الحديثية الكبرى. تُعرض الأحاديث وأحكام كبار المحدثين وأسانيدها مباشرة من الموقع الرسمي مع حفظ أمانة النقل والاختلافات العلمية.
+            <GlassAction
+              label="الدرر السنية"
+              icon="source"
+              onPress={() => open("https://dorar.net")}
+            />
+            <GlassAction
+              label="مشروع تنزيل للقرآن الكريم"
+              icon="source"
+              onPress={() => open("https://tanzil.net")}
+            />
+          </Glass>
+        </AnimatedContent>
+        <AnimatedContent delay={160}>
+          <Glass style={s.card}>
+            <Text style={s.subtitle}>الكلمة لأهل الاختصاص</Text>
+            <Text style={s.body}>
+              يساعد الذكاء الاصطناعي في استخراج النص واقتراح عبارات البحث.
+              الأحكام والنصوص المعروضة تأتي من المصادر، ولا تُنشأ لتعبئة نتيجة
+              فارغة.
             </Text>
-          </AdaptiveGlass>
-        </Pressable>
-
-        {/* Section 3: Scholarly Differences */}
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>منهجية اختلاف أحكام العلماء</Text>
-        </View>
-
-        <AdaptiveGlass
-          borderRadius={radii.lg}
-          style={styles.methodologyCard}
-          highlightBorder
-        >
-          <Text style={styles.methodologyText}>
-            قد تجد في نتائج البحث الحديث نفسه مروياً بعدة أسانيد أو ألفاظ، وقد يختلف حكم عالم عن آخر بالصحة أو الضعف تبعًا للطريق والرواة.
-            يلتزم التطبيق بعرض هذه الاختلافات بحيادية علمية كما وردت في الموسوعة، ويُنبّه المستخدم عند وجود تباين في النتائج للاطلاع على التفاصيل في الوضع المتخصص.
-          </Text>
-        </AdaptiveGlass>
-
-        {/* Footer info */}
-        <View style={styles.footerSection}>
-          <Text style={styles.footerText}>
-            تبيّن — نسخة تجريبية أولى (iOS)
-          </Text>
-          <Text style={styles.footerSubText}>
-            تم التصميم والتطوير وفق أعلى معايير الخصوصية والأمانة العلمية.
-          </Text>
-        </View>
+            <Text style={s.body}>
+              قد تختلف أحكام الروايات باختلاف الألفاظ والأسانيد؛ تتيح التفاصيل
+              مراجعة ما نقله كل مصدر.
+            </Text>
+          </Glass>
+        </AnimatedContent>
+        {!!error && <SwipeToast message={error} onClose={() => setError("")} />}
+        <Text style={[s.body, { textAlign: "center", marginTop: 16 }]}>
+          تبيّن · من النص إلى المصدر
+        </Text>
       </ScrollView>
-    </AmbientBackground>
+    </View>
   );
 }
-
-const styles = StyleSheet.create({
-  scrollContent: {
-    paddingHorizontal: spacing.lg,
-    flexGrow: 1,
-  },
-  headerRow: {
+const s = StyleSheet.create({
+  header: {
     flexDirection: "row-reverse",
+    alignItems: "center",
     justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: spacing.md,
+    marginBottom: 26,
   },
-  backButton: {
-    width: 36,
-    height: 36,
+  title: { fontSize: 20, color: palette.text, fontWeight: "600" },
+  lead: {
+    fontSize: 28,
+    lineHeight: 44,
+    color: palette.mint,
+    textAlign: "right",
+    marginBottom: 8,
   },
-  backGlassCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(7, 26, 20, 0.5)",
+  body: {
+    fontSize: 13,
+    lineHeight: 25,
+    color: palette.muted,
+    textAlign: "right",
   },
-  backFallbackText: {
-    color: colors.ivory,
+  subtitle: {
     fontSize: 16,
-  },
-  headerTitle: {
-    fontSize: 17,
-    fontWeight: "700",
-    color: colors.ivory,
-  },
-  headerSpacer: {
-    width: 36,
-  },
-  heroCard: {
-    padding: spacing.lg,
-    backgroundColor: colors.cardBackground,
-    marginBottom: spacing.lg,
-  },
-  heroBadgeRow: {
-    flexDirection: "row-reverse",
-    alignItems: "center",
-    gap: 8,
-    marginBottom: spacing.xs,
-  },
-  heroDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.emerald,
-  },
-  heroAppName: {
-    fontSize: 22,
-    fontWeight: "800",
-    color: colors.ivory,
-  },
-  heroTagline: {
-    fontSize: 15,
+    color: palette.text,
+    textAlign: "right",
     fontWeight: "600",
-    color: colors.spectralMint,
-    marginBottom: spacing.md,
-    textAlign: "right",
   },
-  heroDescription: {
-    fontSize: 14,
-    color: colors.muted,
-    lineHeight: 22,
-    textAlign: "right",
-  },
-  sectionHeader: {
-    marginBottom: spacing.sm,
-    marginTop: spacing.md,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: colors.ivory,
-    textAlign: "right",
-  },
-  ruleCard: {
-    padding: spacing.md + 4,
-    backgroundColor: colors.cardBackground,
-    borderRightWidth: 4,
-    borderRightColor: colors.emerald,
-  },
-  ruleNotice: {
-    fontSize: 13,
-    color: colors.ivory,
-    lineHeight: 20,
-    marginBottom: spacing.md,
-    textAlign: "right",
-  },
-  bulletList: {
-    gap: spacing.md,
-  },
-  bulletItem: {
-    flexDirection: "row-reverse",
-    alignItems: "flex-start",
-    gap: spacing.sm,
-  },
-  bulletIcon: {
-    fontSize: 15,
-    marginTop: 2,
-  },
-  bulletText: {
-    fontSize: 13,
-    color: colors.muted,
-    lineHeight: 20,
-    flex: 1,
-    textAlign: "right",
-  },
-  bulletBold: {
-    color: colors.ivory,
-    fontWeight: "700",
-  },
-  sourcePressable: {
-    marginBottom: spacing.md,
-  },
-  sourceCard: {
-    padding: spacing.md + 4,
-    backgroundColor: colors.cardBackground,
-  },
-  sourceTopRow: {
-    flexDirection: "row-reverse",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: spacing.xs,
-  },
-  sourceBadgeQuran: {
-    backgroundColor: "rgba(52, 211, 153, 0.15)",
-    paddingVertical: 3,
-    paddingHorizontal: 10,
-    borderRadius: radii.sm,
-  },
-  sourceBadgeQuranText: {
-    fontSize: 11,
-    fontWeight: "700",
-    color: colors.emerald,
-  },
-  sourceBadgeHadith: {
-    backgroundColor: "rgba(215, 182, 106, 0.15)",
-    paddingVertical: 3,
-    paddingHorizontal: 10,
-    borderRadius: radii.sm,
-  },
-  sourceBadgeHadithText: {
-    fontSize: 11,
-    fontWeight: "700",
-    color: colors.warmGold,
-  },
-  sourceLinkHint: {
+  card: { padding: 22, gap: 16, marginTop: 20 },
+  step: { flexDirection: "row-reverse", gap: 16, marginTop: 8 },
+  number: {
     fontSize: 12,
-    color: colors.spectralMint,
-  },
-  sourceName: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: colors.ivory,
-    marginBottom: spacing.xs,
-    textAlign: "right",
-  },
-  sourceDetails: {
-    fontSize: 13,
-    color: colors.muted,
-    lineHeight: 20,
-    textAlign: "right",
-  },
-  methodologyCard: {
-    padding: spacing.md + 4,
-    backgroundColor: colors.cardBackground,
-    borderRightWidth: 4,
-    borderRightColor: colors.warmGold,
-  },
-  methodologyText: {
-    fontSize: 13,
-    color: colors.muted,
-    lineHeight: 22,
-    textAlign: "right",
-  },
-  footerSection: {
-    marginTop: spacing.xl,
-    alignItems: "center",
-    paddingTop: spacing.lg,
-    borderTopWidth: 1,
-    borderTopColor: "rgba(244, 241, 232, 0.06)",
-  },
-  footerText: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: colors.ivory,
-    marginBottom: 4,
-  },
-  footerSubText: {
-    fontSize: 11,
-    color: colors.muted,
-    textAlign: "center",
+    color: palette.dim,
+    fontVariant: ["tabular-nums"],
+    marginTop: 4,
   },
 });
-

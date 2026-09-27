@@ -3,13 +3,13 @@ name: Build Tabayyan Unsigned iOS App
 on:
   push:
     branches:
-      - master
+      - main
 
 jobs:
   build:
     runs-on: macos-latest
     env:
-      EXPO_PUBLIC_API_BASE_URL: ${{ vars.EXPO_PUBLIC_API_BASE_URL }}
+      EXPO_PUBLIC_API_BASE_URL: "http://38.242.147.82:8000"
 
     steps:
       - name: Checkout Code
@@ -18,7 +18,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Install Dependencies
         run: npm install
@@ -37,7 +37,7 @@ jobs:
 
       - name: Build Unsigned App
         run: |
-          WORKSPACE=$(find ios -name "*.xcworkspace" | head -n 1)
+          WORKSPACE=$(find ios -maxdepth 1 -name "*.xcworkspace" | head -n 1)
           SCHEME=$(basename "$WORKSPACE" .xcworkspace)
           xcodebuild -workspace "$WORKSPACE" -scheme "$SCHEME" -configuration Release -sdk iphoneos -arch arm64 CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGNING_IDENTITY="" EXPANDED_CODE_SIGN_IDENTITY="" COMPILER_INDEX_STORE_ENABLE=NO -derivedDataPath ./build
 
@@ -45,11 +45,10 @@ jobs:
         run: |
           mkdir Payload
           cp -r ./build/Build/Products/Release-iphoneos/*.app Payload/
-          zip -r app.ipa Payload
+          zip -r Tabayyan.ipa Payload
 
       - name: Upload IPA Artifact
         uses: actions/upload-artifact@v4
         with:
           name: Tabayyan-Unsigned-IPA
-          path: app.ipa
-
+          path: Tabayyan.ipa
