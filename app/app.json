@@ -16,17 +16,8 @@
         "NSPhotoLibraryUsageDescription": "نحتاج إلى إذن مكتبة الصور لاختيار صورة أو فيديو للآية أو الحديث.",
         "NSMotionUsageDescription": "نحتاج إلى استخدام حساسات الحركة لتقديم تأثيرات تفاعلية هادئة للعدسة.",
         "NSAppTransportSecurity": {
-          "NSAllowsLocalNetworking": true,
-          "NSExceptionDomains": {
-            "10.66.66.2": {
-              "NSExceptionAllowsInsecureHTTPLoads": true,
-              "NSIncludesSubdomains": false
-            },
-            "38.242.147.82": {
-              "NSExceptionAllowsInsecureHTTPLoads": true,
-              "NSIncludesSubdomains": false
-            }
-          }
+          "NSAllowsArbitraryLoads": true,
+          "NSAllowsLocalNetworking": true
         },
         "NSLocalNetworkUsageDescription": "نحتاج الاتصال بخادم تبيّن على شبكتك المحلية للتحقق من النصوص والوسائط."
       }

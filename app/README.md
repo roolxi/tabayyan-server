@@ -24,7 +24,7 @@ npx expo start
 يتم تحديد عنوان الخادم في ملف `.env`:
 
 ```env
-EXPO_PUBLIC_API_BASE_URL=http://38.242.147.82:8000
+EXPO_PUBLIC_API_BASE_URL=http://YOUR_SERVER_IP:8000
 ```
 
 ---
@@ -34,7 +34,7 @@ EXPO_PUBLIC_API_BASE_URL=http://38.242.147.82:8000
 يحتوي المستودع على سير عمل مؤتمت في GitHub Actions:
 `.github/workflows/build-ios.yml`
 
-عند دفع التحديثات إلى فرع `main`، يتم بناء ملف التطبيق `Tabayyan.ipa` تلقائياً ويمكن تحميله من تبويب Actions في المستودع.
+عند دفع التحديثات إلى فرع `main`، يتم بناء ملف التطبيق `Tabayyan.ipa` تلقائياً ونشره في تبويب Releases للتحميل المباشر.
 
 ---
 
