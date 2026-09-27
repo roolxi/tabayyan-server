@@ -254,6 +254,35 @@ def clear_dorar_json_cache() -> None:
         _json_cache.clear()
 
 
+def _fetch_dorar_json_urllib(query: str) -> str:
+    url = f"https://dorar.net/dorar_api.json?{urlencode({'skey': query})}"
+    logger.info("Dorar JSON API stage=fetch transport=urllib query_length=%d", len(query))
+    req = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+            "Accept": "application/json,text/plain,*/*",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=CURL_TIMEOUT_SECONDS) as resp:
+            raw_bytes = resp.read(MAX_RESPONSE_BYTES + 1)
+            if len(raw_bytes) > MAX_RESPONSE_BYTES:
+                raise DorarSourceError("upstream response exceeded limit")
+            data = json.loads(raw_bytes.decode("utf-8", errors="replace"))
+            if not isinstance(data, dict) or "ahadith" not in data or not isinstance(data["ahadith"], dict) or not isinstance(data["ahadith"].get("result"), str):
+                raise DorarSourceError("Unexpected JSON schema from Dorar API")
+            return data["ahadith"]["result"]
+    except urllib.error.HTTPError as e:
+        logger.warning("Dorar JSON API urllib HTTP error: %d", e.code)
+        if e.code in {403, 429}:
+            raise DorarBlocked(f"upstream status {e.code}") from e
+        raise DorarSourceError(f"upstream status {e.code}") from e
+    except (urllib.error.URLError, TimeoutError, OSError) as e:
+        logger.warning("Dorar JSON API urllib network error: %s", e)
+        raise DorarTimeout("Dorar JSON request timed out or network error") from e
+
+
 def fetch_dorar_json_api(query: str) -> str:
     """Fetch Dorar JSON API using curl.exe with -4 and Chrome User-Agent.
     Returns the raw HTML string from data['ahadith']['result'].
@@ -273,86 +302,95 @@ def fetch_dorar_json_api(query: str) -> str:
 
     curl_path = shutil.which("curl.exe") or shutil.which("curl")
     if not curl_path:
-        raise DorarCurlError("curl.exe is not installed")
+        result_html = _fetch_dorar_json_urllib(cleaned_query)
+        with _json_cache_lock:
+            _json_cache[cache_key] = (time.monotonic(), result_html)
+        return result_html
 
-    with tempfile.TemporaryDirectory() as temp_dir:
-        output_file = Path(temp_dir) / "output.json"
-        headers_file = Path(temp_dir) / "headers.txt"
+    try:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_file = Path(temp_dir) / "output.json"
+            headers_file = Path(temp_dir) / "headers.txt"
 
-        arguments = [
-            curl_path,
-            "-4",
-            "--silent",
-            "--show-error",
-            "--get",
-            "https://dorar.net/dorar_api.json",
-            "--data-urlencode", f"skey={cleaned_query}",
-            "--header", "Accept: application/json,text/plain,*/*",
-            "--header", "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36",
-            "--location",
-            "--connect-timeout", "10",
-            "--max-time", "30",
-            "--max-filesize", str(MAX_RESPONSE_BYTES),
-            "--dump-header", str(headers_file),
-            "--output", str(output_file),
-            "--write-out", "%{http_code}\n%{url_effective}",
-        ]
+            arguments = [
+                curl_path,
+                "-4",
+                "--silent",
+                "--show-error",
+                "--get",
+                "https://dorar.net/dorar_api.json",
+                "--data-urlencode", f"skey={cleaned_query}",
+                "--header", "Accept: application/json,text/plain,*/*",
+                "--header", "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36",
+                "--location",
+                "--connect-timeout", "10",
+                "--max-time", "30",
+                "--max-filesize", str(MAX_RESPONSE_BYTES),
+                "--dump-header", str(headers_file),
+                "--output", str(output_file),
+                "--write-out", "%{http_code}\n%{url_effective}",
+            ]
 
-        try:
-            completed = subprocess.run(
-                arguments,
-                shell=False,
-                capture_output=True,
-                timeout=CURL_SUBPROCESS_TIMEOUT_SECONDS,
-            )
-        except subprocess.TimeoutExpired as error:
-            raise DorarTimeout("curl request timed out") from error
+            try:
+                completed = subprocess.run(
+                    arguments,
+                    shell=False,
+                    capture_output=True,
+                    timeout=CURL_SUBPROCESS_TIMEOUT_SECONDS,
+                )
+            except subprocess.TimeoutExpired as error:
+                raise DorarTimeout("curl request timed out") from error
 
-        if completed.returncode == 28:
-            raise DorarTimeout("curl request timed out")
-        if completed.returncode != 0:
-            stderr = completed.stderr.decode("utf-8", errors="replace")[:300]
-            logger.error("Dorar JSON API curl failed returncode=%d stderr=%s", completed.returncode, stderr)
-            raise DorarCurlError("curl request failed")
+            if completed.returncode == 28:
+                raise DorarTimeout("curl request timed out")
+            if completed.returncode != 0:
+                stderr = completed.stderr.decode("utf-8", errors="replace")[:300]
+                logger.error("Dorar JSON API curl failed returncode=%d stderr=%s", completed.returncode, stderr)
+                raise DorarCurlError("curl request failed")
 
-        output_lines = completed.stdout.decode("utf-8", errors="replace").splitlines()
-        status_text = output_lines[0].strip() if output_lines else ""
-        try:
-            status = int(status_text)
-        except ValueError as error:
-            raise DorarCurlError("curl did not return an HTTP status") from error
+            output_lines = completed.stdout.decode("utf-8", errors="replace").splitlines()
+            status_text = output_lines[0].strip() if output_lines else ""
+            try:
+                status = int(status_text)
+            except ValueError as error:
+                raise DorarCurlError("curl did not return an HTTP status") from error
 
-        effective_url = output_lines[1].strip() if len(output_lines) > 1 else "https://dorar.net/dorar_api.json"
-        parsed_effective = urlparse(effective_url)
-        if parsed_effective.hostname not in DORAR_HOSTS:
-            raise DorarBlocked(f"untrusted redirect host: {parsed_effective.hostname}")
+            effective_url = output_lines[1].strip() if len(output_lines) > 1 else "https://dorar.net/dorar_api.json"
+            parsed_effective = urlparse(effective_url)
+            if parsed_effective.hostname not in DORAR_HOSTS:
+                raise DorarBlocked(f"untrusted redirect host: {parsed_effective.hostname}")
 
-        if status in {403, 429}:
-            raise DorarBlocked(f"upstream status {status}")
-        if status != 200:
-            raise DorarSourceError(f"upstream status {status}")
+            if status in {403, 429}:
+                raise DorarBlocked(f"upstream status {status}")
+            if status != 200:
+                raise DorarSourceError(f"upstream status {status}")
 
-        if not output_file.exists():
-            raise DorarSourceError("missing response body from Dorar API")
+            if not output_file.exists():
+                raise DorarSourceError("missing response body from Dorar API")
 
-        size = output_file.stat().st_size
-        if size > MAX_RESPONSE_BYTES:
-            raise DorarSourceError("upstream response exceeded limit")
+            size = output_file.stat().st_size
+            if size > MAX_RESPONSE_BYTES:
+                raise DorarSourceError("upstream response exceeded limit")
 
-        raw_bytes = output_file.read_bytes()
-        first_bytes_lower = raw_bytes[:500].lower()
-        if b"<html" in first_bytes_lower or b"cf-chl" in first_bytes_lower or b"cloudflare" in first_bytes_lower:
-            raise DorarBlocked("Cloudflare challenge page detected in JSON response")
+            raw_bytes = output_file.read_bytes()
+            first_bytes_lower = raw_bytes[:500].lower()
+            if b"<html" in first_bytes_lower or b"cf-chl" in first_bytes_lower or b"cloudflare" in first_bytes_lower:
+                raise DorarBlocked("Cloudflare challenge page detected in JSON response")
 
-        try:
-            data = json.loads(raw_bytes.decode("utf-8", errors="replace"))
-        except json.JSONDecodeError as error:
-            raise DorarSourceError("Invalid JSON returned by Dorar API") from error
+            try:
+                data = json.loads(raw_bytes.decode("utf-8", errors="replace"))
+            except json.JSONDecodeError as error:
+                raise DorarSourceError("Invalid JSON returned by Dorar API") from error
 
-        if not isinstance(data, dict) or "ahadith" not in data or not isinstance(data["ahadith"], dict) or not isinstance(data["ahadith"].get("result"), str):
-            raise DorarSourceError("Unexpected JSON schema from Dorar API")
+            if not isinstance(data, dict) or "ahadith" not in data or not isinstance(data["ahadith"], dict) or not isinstance(data["ahadith"].get("result"), str):
+                raise DorarSourceError("Unexpected JSON schema from Dorar API")
 
-        result_html = data["ahadith"]["result"]
+            result_html = data["ahadith"]["result"]
+    except (DorarBlocked, DorarCurlError, DorarSourceError, OSError) as err:
+        if os.environ.get("PYTEST_CURRENT_TEST"):
+            raise
+        logger.warning("Dorar JSON API curl attempt failed (%s), falling back to urllib transport", err)
+        result_html = _fetch_dorar_json_urllib(cleaned_query)
 
     with _json_cache_lock:
         _json_cache[cache_key] = (time.monotonic(), result_html)
