@@ -8,6 +8,8 @@ on:
 jobs:
   build:
     runs-on: macos-latest
+    permissions:
+      contents: write
     env:
       EXPO_PUBLIC_API_BASE_URL: "http://38.242.147.82:8000"
 
@@ -52,3 +54,15 @@ jobs:
         with:
           name: Tabayyan-Unsigned-IPA
           path: Tabayyan.ipa
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: github.ref == 'refs/heads/main'
+        with:
+          tag_name: latest
+          name: "Tabayyan Latest Build"
+          body: "ملف IPA غير موقّع لتطبيق تبيّن. يمكن تثبيته عبر TrollStore أو AltStore أو SideStore."
+          files: Tabayyan.ipa
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
